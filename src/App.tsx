@@ -9,6 +9,8 @@ import { KitchenTV } from './components/KitchenTV';
 import { DataPanel, SettingsPanel } from './components/Panels';
 import { JoinStore } from './components/JoinStore';
 import { ToastHost, useToast } from './components/ui';
+import { PositionsEditor } from './components/PositionsEditor';
+import { overridesFor, StoreCtx } from './hooks/storeContext';
 
 export default function App() {
   const [access, setAccess] = useAccess();
@@ -35,7 +37,7 @@ function Splash({ text, error }: { text: string; error?: boolean }) {
 
 function Main() {
   const toast = useToast();
-  const { loading, days, realDays, isSample, settings, plans, error } = useStoreData(true);
+  const { loading, days, realDays, isSample, settings, plans, error, positions, overrides } = useStoreData(true);
   const [mode, setMode] = useDeviceState<Mode>('rf.mode', 'sched');
   const [filter, setFilter] = useState<DayFilter | null>(null);
   const [live, setLive] = useState(true);
@@ -55,7 +57,9 @@ function Main() {
   const f: DayFilter = filter ?? 'all';
 
   const ds = useMemo(() => daysFor(days, f), [days, f]);
-  const an = useMemo(() => analyze(forecastFrom(ds, settings), settings), [ds, settings]);
+  const an = useMemo(() => analyze(forecastFrom(ds, settings), settings, { positions, overrides: overridesFor(overrides, f) }), [ds, settings, positions, overrides, f]);
+  const canSave = !isSample || backend.mode === 'local';
+  const cfg = useMemo(() => ({ positions, overrides, canSave }), [positions, overrides, canSave]);
 
   const liveMin = nowMinutes(clock);
   const useLive = live && !!an && !(isSample && (liveMin < an.open || liveMin >= an.close));
@@ -86,9 +90,10 @@ function Main() {
   if (loading) return <Splash text="Loading sales data…" />;
 
   if (tv && mode === 'floor' && an)
-    return <KitchenTV an={an} filter={f} now={now} clock={useLive ? clock : null} onExit={exitTV} />;
+    return <StoreCtx.Provider value={cfg}><KitchenTV an={an} filter={f} now={now} clock={useLive ? clock : null} onExit={exitTV} /></StoreCtx.Provider>;
 
   return (
+    <StoreCtx.Provider value={cfg}>
     <div className="mx-auto max-w-[1200px] px-4 pb-14">
       <TopBar mode={mode} setMode={setMode} filter={f} setFilter={setFilter} options={options} isSample={isSample}
         dayCount={realDays.length} onFiles={onFiles} uploading={uploading} />
@@ -109,9 +114,11 @@ function Main() {
         )}
       </main>
       <div className="grid gap-[18px]">
-        <SettingsPanel settings={settings} canSave={!isSample || backend.mode === 'local'} />
+        <PositionsEditor />
+        <SettingsPanel settings={settings} canSave={canSave} />
         <DataPanel days={realDays} isSample={isSample} />
       </div>
     </div>
+    </StoreCtx.Provider>
   );
 }

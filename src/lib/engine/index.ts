@@ -4,7 +4,7 @@ export * from './format';
 export * from './csv';
 export * from './forecast';
 export * from './analyze';
-export * from './lineup';
+export * from './positions';
 export * from './shifts';
 export * from './floor';
 export * from './sample';

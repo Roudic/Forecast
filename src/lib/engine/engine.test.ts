@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  analyze, backtest, daysFor, DEFAULT_SETTINGS, forecastFrom, makeSample, parseCSV, shiftsFor, buildPlan, floorState, huddleText,
+  analyze, backtest, deploy, lineup, DEFAULT_POSITIONS, positionsWithDefaults, daysFor, DEFAULT_SETTINGS, forecastFrom, makeSample, parseCSV, shiftsFor, buildPlan, floorState, huddleText,
 } from './index';
 
 const S = DEFAULT_SETTINGS;
@@ -50,5 +50,34 @@ describe('forecast + peaks', () => {
     expect(buildPlan(an).length).toBeGreaterThan(5);
     expect(floorState(an, 700).tag).toBeTruthy();
     expect(huddleText(an, 700, 'Wednesday')).toMatch(/PEAKS TODAY/);
+  });
+});
+
+describe('positions + hand edits', () => {
+  const days = makeSample();
+  it('fills seats in order and reports extras', () => {
+    const d = deploy(4, ['Primary', 'Breading', 'Primary', 'Fries']);
+    expect(d.counts).toEqual({ Primary: 2, Breading: 1, Fries: 1 });
+    expect(deploy(6, ['Primary', 'Breading']).extra).toBe(4);
+  });
+  it('switches to the breakfast board before the cutoff', () => {
+    expect(lineup(3, 4, 420).am).toBe(true);
+    expect(Object.keys(lineup(3, 4, 420).boh.counts)).toContain('Biscuits');
+    expect(lineup(3, 4, 720, DEFAULT_POSITIONS).am).toBe(false);
+  });
+  it('repairs a partial saved config', () => {
+    const p = positionsWithDefaults({ amCutoff: 600, seats: { boh: { am: ['Grill'], day: ['Grill', 'Primary'] } } } as never);
+    expect(p.stations.boh).toContain('Grill');
+    expect(p.seats.foh.day.length).toBeGreaterThan(0);
+  });
+  it('applies hour edits to the counts', () => {
+    const fc = forecastFrom(daysFor(days, 5), S);
+    const base = analyze(fc, S)!;
+    const edited = analyze(fc, S, { overrides: { '12': { foh: 20, boh: 2 } } })!;
+    const row = edited.L.find((r) => r.min === 720)!;
+    expect(row.foh).toBe(20);
+    expect(row.boh).toBe(2);
+    expect(row.edited).toBe(true);
+    expect(edited.hourly.find((h) => h.h === 12)!.autoFoh).toBe(base.hourly.find((h) => h.h === 12)!.foh);
   });
 });

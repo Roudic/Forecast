@@ -1,10 +1,12 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { backend } from '../lib/backend';
+import { overridesFor, useStoreCfg } from '../hooks/storeContext';
 import { motion } from 'framer-motion';
 import {
   analyze, backtest, daysFor, dur, fmt, fmtShort, forecastFrom, LEVEL_LABEL, money, prettyDate, WD,
   type Analysis, type Day, type DayFilter, type Hour, type SavedPlan, type Settings,
 } from '../lib/engine';
-import { Card, CountUp, Kpi, Rise, tone } from './ui';
+import { Card, ConfirmButton, CountUp, Kpi, Rise, tone, useToast } from './ui';
 import { CrewChart, Legend, SalesChart, Spark } from './Charts';
 import { ShiftBuilder } from './ShiftBuilder';
 
@@ -59,7 +61,7 @@ export function Scheduler({ an, ds, days, filter, setFilter, settings: s, plans,
         <Legend items={[['#6FA9FF', 'FOH'], ['#E51636', 'BOH']]} />
       </Card>
 
-      <HourTable an={an} />
+      <HourTable an={an} filter={filter} />
     </div>
   );
 }
@@ -135,11 +137,12 @@ export function PeakCards({ an }: { an: Analysis }) {
 }
 
 function WeekStrip({ days, filter, setFilter, s }: { days: Day[]; filter: DayFilter; setFilter: (f: DayFilter) => void; s: Settings }) {
+  const { positions, overrides } = useStoreCfg();
   const res = useMemo(() => {
     const wds = [...new Set(days.map((d) => d.wd).filter((v): v is number => v != null))].sort((a, b) => a - b);
-    return wds.map((w) => { const ds = daysFor(days, w); const an = analyze(forecastFrom(ds, s), s); return an && { w, an, n: ds.length }; })
+    return wds.map((w) => { const ds = daysFor(days, w); const an = analyze(forecastFrom(ds, s), s, { positions, overrides: overridesFor(overrides, w) }); return an && { w, an, n: ds.length }; })
       .filter((x): x is { w: number; an: Analysis; n: number } => !!x);
-  }, [days, s]);
+  }, [days, s, positions, overrides]);
   if (res.length < 2) return null;
   const mx = Math.max(...res.map((r) => Math.max(...r.an.L.map((x) => x.sales))));
   return (
@@ -173,11 +176,61 @@ function Move({ o }: { o: Hour }) {
   return o.dF || o.dB ? <>{pill(o.dF, 'FOH')}{pill(o.dB, 'BOH')}</> : <span className="text-sm text-muted">hold</span>;
 }
 
-function HourTable({ an }: { an: Analysis }) {
+function HourTable({ an, filter }: { an: Analysis; filter: DayFilter }) {
+  const { overrides, canSave } = useStoreCfg();
+  const toast = useToast();
+  const [editing, setEditing] = useState(false);
+  const mine = overridesFor(overrides, filter);
+  const editedHours = Object.keys(mine).length;
+  const fk = String(filter);
+
+  const setCount = (h: number, side: 'foh' | 'boh', value: number, auto: number) => {
+    const cur = { ...(mine[String(h)] ?? {}) };
+    if (value === auto) delete cur[side]; else cur[side] = Math.max(0, value);
+    const day = { ...mine };
+    if (cur.foh == null && cur.boh == null) delete day[String(h)]; else day[String(h)] = cur;
+    const next = { ...overrides, [fk]: day };
+    if (!Object.keys(day).length) delete next[fk];
+    backend.saveOverrides(next).catch((e: Error) => toast(`Couldn't save: ${e.message}`));
+  };
+  const resetAll = () => {
+    const next = { ...overrides };
+    delete next[fk];
+    backend.saveOverrides(next).then(() => toast('Back to the forecast counts')).catch((e: Error) => toast(`Couldn't save: ${e.message}`));
+  };
+
+  const cell = (o: Hour, side: 'foh' | 'boh') => {
+    const v = o[side], auto = side === 'foh' ? o.autoFoh : o.autoBoh, changed = v !== auto;
+    const c = side === 'foh' ? 'text-foh' : 'text-red-text';
+    if (!editing) return <span className={`font-bold ${c}`}>{v}{changed && <span className="ml-1 text-xs text-warn" title={`Forecast said ${auto}`}>✎</span>}</span>;
+    return (
+      <span className="inline-flex items-center gap-1">
+        <Step label={`One less ${side.toUpperCase()} at ${fmt(o.h * 60)}`} onClick={() => setCount(o.h, side, v - 1, auto)} disabled={v <= 0}>−</Step>
+        <span className={`w-8 text-center font-display text-xl font-bold ${c} ${changed ? 'underline decoration-warn decoration-2 underline-offset-4' : ''}`}>{v}</span>
+        <Step label={`One more ${side.toUpperCase()} at ${fmt(o.h * 60)}`} onClick={() => setCount(o.h, side, v + 1, auto)}>+</Step>
+        {changed && <span className="ml-1 text-xs text-muted">was {auto}</span>}
+      </span>
+    );
+  };
+
   return (
     <Card title="Hour by hour" sub="Build the schedule to these counts. Moves show who comes in or gets cut at the top of the hour." delay={7}>
+      <div className="mb-3 flex flex-wrap items-center gap-2.5">
+        <button type="button" className={`btn ${editing ? 'btn-primary' : ''}`} disabled={!canSave} onClick={() => setEditing((e) => !e)}>
+          {editing ? 'Done editing' : 'Edit counts'}
+        </button>
+        {editedHours > 0 && (
+          <>
+            <span className="rounded-full bg-warn-soft px-3 py-1.5 text-sm font-bold text-warn">{editedHours} hour{editedHours > 1 ? 's' : ''} hand-edited</span>
+            <ConfirmButton onConfirm={resetAll} confirmText="Tap again to undo all edits">Reset to forecast</ConfirmButton>
+          </>
+        )}
+        <span className="text-sm text-muted">
+          {editing ? `Tap − or + to move people. Edits save for ${filter === 'all' ? 'the all-days view' : WD[filter] + 's'} and change the shifts, labor, and floor plan.` : 'Know your store better than the math? Edit the counts hour by hour.'}
+        </span>
+      </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[600px] border-collapse num">
+        <table className={`w-full border-collapse num ${editing ? 'min-w-[760px]' : 'min-w-[600px]'}`}>
           <thead>
             <tr className="text-xs uppercase tracking-[0.08em] text-muted">
               {['Hour', 'Sales', 'Range', ...(an.hasTrans ? ['Trans'] : []), 'FOH', 'BOH', 'Total', 'Moves'].map((h, i, a) => (
@@ -187,15 +240,15 @@ function HourTable({ an }: { an: Analysis }) {
           </thead>
           <tbody>
             {an.hourly.map((o) => (
-              <tr key={o.h} className="transition-colors hover:bg-panel2">
+              <tr key={o.h} className={`transition-colors hover:bg-panel2 ${o.edited ? 'bg-warn-soft/40' : ''}`}>
                 <td className="whitespace-nowrap border-b border-line px-2.5 py-2.5" style={o.rush ? { boxShadow: 'inset 4px 0 0 #E51636' } : undefined}>
                   {fmt(o.h * 60)}{o.rush && <span className="text-sm text-muted"> · rush</span>}
                 </td>
                 <td className="border-b border-line px-2.5 text-right">{money(o.sales)}</td>
                 <td className="border-b border-line px-2.5 text-right text-[13px] text-faint">{money(o.low)}–{money(o.high)}</td>
                 {an.hasTrans && <td className="border-b border-line px-2.5 text-right">{o.hasT ? Math.round(o.trans) : '–'}</td>}
-                <td className="border-b border-line px-2.5 text-right font-bold text-foh">{o.foh}</td>
-                <td className="border-b border-line px-2.5 text-right font-bold text-red-text">{o.boh}</td>
+                <td className="whitespace-nowrap border-b border-line px-2.5 text-right">{cell(o, 'foh')}</td>
+                <td className="whitespace-nowrap border-b border-line px-2.5 text-right">{cell(o, 'boh')}</td>
                 <td className="border-b border-line px-2.5 text-right">{o.foh + o.boh}</td>
                 <td className="whitespace-nowrap border-b border-line px-2.5"><Move o={o} /></td>
               </tr>
@@ -204,5 +257,12 @@ function HourTable({ an }: { an: Analysis }) {
         </table>
       </div>
     </Card>
+  );
+}
+
+function Step({ label, onClick, disabled, children }: { label: string; onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
+  return (
+    <button type="button" aria-label={label} title={label} disabled={disabled} onClick={onClick}
+      className="grid h-9 w-9 place-items-center rounded-lg border border-line bg-panel3 text-lg font-bold transition hover:border-muted active:scale-95 disabled:opacity-30">{children}</button>
   );
 }

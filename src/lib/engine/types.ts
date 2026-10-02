@@ -16,7 +16,7 @@ export type FcRow = { min: number; sales: number; avg: number; low: number; high
 
 export type Level = 'big' | 'medium' | 'light';
 
-export type Row = FcRow & { foh: number; boh: number; crew: number; level: Level | null; rush: boolean };
+export type Row = FcRow & { foh: number; boh: number; crew: number; level: Level | null; rush: boolean; autoFoh: number; autoBoh: number; edited: boolean };
 
 export type Peak = {
   none: false;
@@ -51,6 +51,7 @@ export type BreakWindow = { start: number; end: number; avg: number; send: numbe
 export type Hour = {
   h: number; sales: number; low: number; high: number; foh: number; boh: number;
   rush: boolean; trans: number; hasT: boolean; dF: number; dB: number;
+  autoFoh: number; autoBoh: number; edited: boolean;
 };
 
 export type Daypart = {
@@ -100,7 +101,12 @@ export type Settings = {
   splhGoal: number;
 };
 
-export type Side = 'foh' | 'boh';
+import type { Side } from './positions';
+export type { Side };
+/** Hand edits to the counts, by hour (6 = 6 AM hour). Only the sides set are changed. */
+export type HourOverride = { foh?: number; boh?: number };
+export type Overrides = Record<string, HourOverride>;
+
 export type Shift = { start: number; end: number; hrs: number; tag: string; side: Side };
 
 export type SavedShift = Shift & { who: string };

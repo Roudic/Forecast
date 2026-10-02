@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useStoreCfg } from '../hooks/storeContext';
 import { AnimatePresence, motion } from 'framer-motion';
 import { buildPlan, countdownTarget, dayLabel, floorState, fmt, lineupFor, type Analysis, type DayFilter } from '../lib/engine';
 import { countdown, DayRail, statusStyle } from './Floor';
@@ -21,7 +22,8 @@ export function KitchenTV({ an, filter, now, clock, onExit }: { an: Analysis; fi
     };
   }, [onExit]);
 
-  const st = floorState(an, now), t = st.target, cd = countdownTarget(st, now), lu = lineupFor(st);
+  const { positions } = useStoreCfg();
+  const st = floorState(an, now), t = st.target, cd = countdownTarget(st, now), lu = lineupFor(st, positions);
   const ev = buildPlan(an).filter((e) => e.t > now).slice(0, 3);
   const sty = statusStyle[st.cls];
   const chips = (counts: Record<string, number>, c: string) =>

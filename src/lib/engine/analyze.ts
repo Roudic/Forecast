@@ -1,5 +1,7 @@
-import type { Analysis, BreakWindow, Daypart, FcRow, Hour, Level, NoPeak, Peak, Row, Settings } from './types';
-import { BOH_CAP } from './lineup';
+import type { Analysis, BreakWindow, Daypart, FcRow, Hour, Level, NoPeak, Overrides, Peak, Row, Settings } from './types';
+import { DEFAULT_POSITIONS, maxSeats, type Positions } from './positions';
+
+export type AnalyzeOpts = { positions?: Positions; overrides?: Overrides | null };
 
 export const DAYPARTS: [string, number, number][] = [
   ['Breakfast', 0, 630],
@@ -16,7 +18,9 @@ export const daypartOf = (m: number) => (m < 630 ? 'Breakfast' : m < 840 ? 'Lunc
  * 3. Rush strength is rated against the whole day: big / medium / light.
  * 4. Crew per 15 = smoothed sales rate ÷ SPLH (rush SPLH for big rushes), split FOH/BOH.
  */
-export function analyze(fc: FcRow[], s: Settings): Analysis | null {
+export function analyze(fc: FcRow[], s: Settings, o: AnalyzeOpts = {}): Analysis | null {
+  const positions = o.positions ?? DEFAULT_POSITIONS;
+  const ov = o.overrides ?? {};
   const a = fc.findIndex((r) => r.sales > 0);
   let b = fc.length - 1;
   while (b >= 0 && !(fc[b].sales > 0)) b--;
@@ -80,7 +84,7 @@ export function analyze(fc: FcRow[], s: Settings): Analysis | null {
   const lvl = B.map((_, i) => rushRaw.find((r) => i >= r.i0 && i <= r.i1)?.level ?? null);
 
   // ---- crew per 15
-  const bohCap = Object.values(BOH_CAP).reduce((x, v) => x + v, 0) - 2; // breakfast-only stations don't stack
+  const bohCap = Math.max(s.minBoh, maxSeats(positions, 'boh')); // can't put more people on BOH than it has seats
   const L: Row[] = B.map((r, i) => {
     const p = B[i - 1] ? B[i - 1].sales : r.sales, n = B[i + 1] ? B[i + 1].sales : r.sales;
     const rate = ((p + 2 * r.sales + n) / 4) * (60 / step);
@@ -88,7 +92,11 @@ export function analyze(fc: FcRow[], s: Settings): Analysis | null {
     const tot = Math.max(s.minFoh + s.minBoh, Math.ceil(rate / splh));
     const boh = Math.min(bohCap, Math.max(s.minBoh, Math.round((tot * s.boh) / 100)));
     const foh = Math.max(s.minFoh, tot - boh);
-    return { ...r, foh, boh, crew: foh + boh, level: lvl[i], rush: !!lvl[i] };
+    // hand edits for this hour win over the forecast
+    const e = ov[String(Math.floor(r.min / 60))];
+    const F = e?.foh != null ? Math.max(0, Math.round(e.foh)) : foh;
+    const Bo = e?.boh != null ? Math.max(0, Math.round(e.boh)) : boh;
+    return { ...r, foh: F, boh: Bo, crew: F + Bo, autoFoh: foh, autoBoh: boh, edited: F !== foh || Bo !== boh, level: lvl[i], rush: !!lvl[i] };
   });
   const rushes: Peak[] = rushRaw.map((r) => {
     let mx = r.i0;
@@ -119,7 +127,8 @@ export function analyze(fc: FcRow[], s: Settings): Analysis | null {
   const H = new Map<number, Hour>();
   L.forEach((r) => {
     const h = Math.floor(r.min / 60);
-    const o = H.get(h) || { h, sales: 0, low: 0, high: 0, foh: 0, boh: 0, rush: false, trans: 0, hasT: false, dF: 0, dB: 0 };
+    const o = H.get(h) || { h, sales: 0, low: 0, high: 0, foh: 0, boh: 0, rush: false, trans: 0, hasT: false, dF: 0, dB: 0, autoFoh: 0, autoBoh: 0, edited: false };
+    o.autoFoh = Math.max(o.autoFoh, r.autoFoh); o.autoBoh = Math.max(o.autoBoh, r.autoBoh); o.edited = o.edited || r.edited;
     o.sales += r.sales; o.low += r.low; o.high += r.high;
     o.foh = Math.max(o.foh, r.foh); o.boh = Math.max(o.boh, r.boh); o.rush = o.rush || r.rush;
     if (r.trans != null) { o.trans += r.trans; o.hasT = true; }

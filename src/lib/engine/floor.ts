@@ -1,6 +1,6 @@
 import type { Analysis, Peak, Shift } from './types';
 import { dur, fmt, money, WD } from './format';
-import { lineup } from './lineup';
+import { DEFAULT_POSITIONS, lineup, type Positions } from './positions';
 
 export type PlanEvent = { t: number; k: 'stock' | 'ready' | 'rush' | 'reset' | 'break' | 'cut' | 'add'; w: string; d: string; list?: string[] };
 
@@ -86,13 +86,13 @@ export function countdownTarget(st: FloorState, now: number): { t: number; label
   return null;
 }
 
-export function lineupFor(st: FloorState) {
+export function lineupFor(st: FloorState, p: Positions = DEFAULT_POSITIONS) {
   const t = st.target;
-  return t ? lineup(t.peakFoh, t.peakBoh, t.peakMin) : lineup(st.nowRow.foh, st.nowRow.boh, st.nowRow.min);
+  return t ? lineup(t.peakFoh, t.peakBoh, t.peakMin, p) : lineup(st.nowRow.foh, st.nowRow.boh, st.nowRow.min, p);
 }
 
-export function huddleText(an: Analysis, now: number, dayLabel: string) {
-  const st = floorState(an, now), t = st.target, lu = lineupFor(st);
+export function huddleText(an: Analysis, now: number, dayLabel: string, p: Positions = DEFAULT_POSITIONS) {
+  const st = floorState(an, now), t = st.target, lu = lineupFor(st, p);
   const list = (d: { counts: Record<string, number> }) => Object.entries(d.counts).filter(([, v]) => v).map(([k, v]) => `${k} ${v}`).join(', ');
   const out = [`HUEYTOWN HUDDLE · ${dayLabel} ${fmt(now)}`, `${st.tag.toUpperCase()}: ${st.head}`, st.sub, '', `On the clock now: ${st.nowRow.foh} FOH / ${st.nowRow.boh} BOH`];
   if (t) out.push(

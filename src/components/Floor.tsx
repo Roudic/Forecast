@@ -4,6 +4,7 @@ import {
   type Analysis, type DayFilter, type Deploy, type FloorState,
 } from '../lib/engine';
 import { Card, CountUp, useCopy } from './ui';
+import { useStoreCfg } from '../hooks/storeContext';
 import { Legend, SalesChart } from './Charts';
 
 /** Countdown text: seconds when running on the live clock, minutes when someone picked a time. */
@@ -28,9 +29,10 @@ type Props = {
 };
 
 export function Floor({ an, filter, now, clock, live, setLive, setManual, onTV }: Props) {
+  const { positions } = useStoreCfg();
   const st = floorState(an, now);
   const t = st.target;
-  const lu = lineupFor(st);
+  const lu = lineupFor(st, positions);
   const ev = buildPlan(an).filter((e) => e.t >= now - an.step);
   const nextIdx = ev.findIndex((e) => e.t > now);
   const cd = countdownTarget(st, now);
@@ -52,7 +54,7 @@ export function Floor({ an, filter, now, clock, live, setLive, setManual, onTV }
           </label>
           <div className="ml-auto flex flex-wrap gap-2.5">
             <button type="button" className="btn" onClick={onTV}>Kitchen TV</button>
-            <button type="button" className="btn" onClick={() => copy(huddleText(an, now, dayLabel(filter)), 'Huddle copied. Paste it in the group chat.')}>Copy shift huddle</button>
+            <button type="button" className="btn" onClick={() => copy(huddleText(an, now, dayLabel(filter), positions), 'Huddle copied. Paste it in the group chat.')}>Copy shift huddle</button>
           </div>
         </div>
         {box}
@@ -125,6 +127,7 @@ export function Floor({ an, filter, now, clock, live, setLive, setManual, onTV }
       </div>
 
       <Card title={`Line positions ${t ? 'for the rush peak' : 'right now'}`} sub={`${lu.am ? 'Breakfast board' : 'Lunch/dinner board'} · bars show how full each station is`} delay={4}>
+        <button type="button" className="btn btn-sm mb-3" onClick={() => { const d = document.getElementById('positions-editor') as HTMLDetailsElement | null; if (d) { d.open = true; d.scrollIntoView({ behavior: 'smooth' }); } }}>Edit positions</button>
         <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,270px),1fr))] gap-[18px]">
           <Stations title={`BOH · ${t ? t.peakBoh : st.nowRow.boh}`} d={lu.boh} side="boh" />
           <Stations title={`FOH · ${t ? t.peakFoh : st.nowRow.foh}`} d={lu.foh} side="foh" />

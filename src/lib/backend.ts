@@ -3,13 +3,18 @@ import {
 } from 'firebase/firestore';
 import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import { auth, db, firebaseEnabled, STORE_ID } from './firebase';
-import type { Day, SavedPlan, Settings } from './engine';
-import { withDefaults } from './engine';
+import type { Day, Overrides, Positions, SavedPlan, Settings } from './engine';
+import { positionsWithDefaults, withDefaults } from './engine';
+
+/** Hand-edited counts, keyed by day filter ('all' or weekday number) then hour. */
+export type OverrideMap = Record<string, Overrides>;
 
 /*
  Firestore layout (all under stores/{STORE_ID}):
    members/{uid}        { name, code, joinedAt }      who can read/write this store
    config/settings      Settings                      one shared set of settings for every leader
+   config/positions     Positions                     stations + seat order for FOH/BOH, breakfast and lunch/dinner
+   config/overrides     { [day]: { [hour]: {foh, boh} } }   hand-edited counts per weekday
    days/{YYYY-MM-DD}    { key, wd, dn, source, uploadedAt, slots: [{m, s, t}] }   one doc per business day
    plans/{id}           SavedPlan                     shift plans with names on them
  storeSecrets/{STORE_ID} { joinCode }                 never readable from the app; rules check it on join
@@ -20,6 +25,10 @@ export interface Backend {
   subscribeDays(cb: (days: Day[]) => void, onErr?: (e: Error) => void): () => void;
   subscribeSettings(cb: (s: Settings) => void): () => void;
   subscribePlans(cb: (p: SavedPlan[]) => void): () => void;
+  subscribePositions(cb: (p: Positions) => void): () => void;
+  subscribeOverrides(cb: (o: OverrideMap) => void): () => void;
+  savePositions(p: Positions): Promise<void>;
+  saveOverrides(o: OverrideMap): Promise<void>;
   saveDays(days: Day[]): Promise<void>;
   deleteDay(key: string): Promise<void>;
   clearDays(keys: string[]): Promise<void>;
@@ -70,6 +79,14 @@ function firestoreBackend(): Backend {
       }
     },
     saveSettings: (s) => setDoc(doc(fdb, store('config', 'settings')), { ...s, updatedAt: serverTimestamp() }),
+    subscribePositions(cb) {
+      return onSnapshot(doc(fdb, store('config', 'positions')), (snap) => cb(positionsWithDefaults(snap.exists() ? (snap.data() as Partial<Positions>) : null)));
+    },
+    subscribeOverrides(cb) {
+      return onSnapshot(doc(fdb, store('config', 'overrides')), (snap) => cb(snap.exists() ? ((snap.data().byDay ?? {}) as OverrideMap) : {}));
+    },
+    savePositions: (p) => setDoc(doc(fdb, store('config', 'positions')), { ...p, updatedAt: serverTimestamp() }),
+    saveOverrides: (o) => setDoc(doc(fdb, store('config', 'overrides')), { byDay: o, updatedAt: serverTimestamp() }),
     savePlan: (p) => setDoc(doc(fdb, store('plans', p.id)), { ...p, createdBy: auth?.currentUser?.uid ?? null }),
     deletePlan: (id) => deleteDoc(doc(fdb, store('plans', id))),
   };
@@ -77,8 +94,8 @@ function firestoreBackend(): Backend {
 
 /* ---------- Demo mode: this browser only ---------- */
 function localBackend(): Backend {
-  const K = { days: 'rf.days', settings: 'rf.settings', plans: 'rf.plans' };
-  const subs: Record<string, Set<(v: unknown) => void>> = { days: new Set(), settings: new Set(), plans: new Set() };
+  const K = { days: 'rf.days', settings: 'rf.settings', plans: 'rf.plans', positions: 'rf.positions', overrides: 'rf.overrides' };
+  const subs: Record<string, Set<(v: unknown) => void>> = { days: new Set(), settings: new Set(), plans: new Set(), positions: new Set(), overrides: new Set() };
   const read = <T,>(k: string, fb: T): T => { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : fb; } catch { return fb; } };
   const write = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage full or blocked */ } };
   const emit = (name: keyof typeof K, v: unknown) => { write(K[name], v); subs[name].forEach((f) => f(v)); };
@@ -101,6 +118,10 @@ function localBackend(): Backend {
     async deleteDay(key) { emit('days', read<Day[]>(K.days, []).filter((d) => d.key !== key)); },
     async clearDays(keys) { const k = new Set(keys); emit('days', read<Day[]>(K.days, []).filter((d) => !k.has(d.key))); },
     async saveSettings(s) { emit('settings', s); },
+    subscribePositions: (cb) => sub<Positions | null>('positions', null, (v) => cb(positionsWithDefaults(v))),
+    subscribeOverrides: (cb) => sub<OverrideMap>('overrides', {}, cb),
+    async savePositions(p) { emit('positions', p); },
+    async saveOverrides(o) { emit('overrides', o); },
     async savePlan(p) { emit('plans', [p, ...read<SavedPlan[]>(K.plans, []).filter((x) => x.id !== p.id)]); },
     async deletePlan(id) { emit('plans', read<SavedPlan[]>(K.plans, []).filter((x) => x.id !== id)); },
   };

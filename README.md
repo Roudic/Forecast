@@ -69,6 +69,8 @@ storeSecrets/{storeId}          { joinCode }                     never readable 
 stores/{storeId}/
   members/{uid}                 { name, code, joinedAt }          devices allowed in this store
   config/settings               SPLH, BOH %, shift rules, …       shared by every leader
+  config/positions              stations + seat order             FOH/BOH, breakfast + lunch/dinner boards
+  config/overrides              hand-edited counts by hour         per weekday
   days/{YYYY-MM-DD}             { key, wd, dn, source, slots[] }  one doc per business day
   plans/{YYYY-MM-DD}            { name, shifts[{…, who}] }        saved shift plans with names
 ```

@@ -1,7 +1,6 @@
 import type { Analysis, BreakWindow, Daypart, FcRow, Hour, Level, NoPeak, Overrides, Peak, Row, Settings } from './types';
-import { DEFAULT_POSITIONS, maxSeats, type Positions } from './positions';
 
-export type AnalyzeOpts = { positions?: Positions; overrides?: Overrides | null };
+export type AnalyzeOpts = { overrides?: Overrides | null };
 
 export const DAYPARTS: [string, number, number][] = [
   ['Breakfast', 0, 630],
@@ -19,7 +18,6 @@ export const daypartOf = (m: number) => (m < 630 ? 'Breakfast' : m < 840 ? 'Lunc
  * 4. Crew per 15 = smoothed sales rate ÷ SPLH (rush SPLH for big rushes), split FOH/BOH.
  */
 export function analyze(fc: FcRow[], s: Settings, o: AnalyzeOpts = {}): Analysis | null {
-  const positions = o.positions ?? DEFAULT_POSITIONS;
   const ov = o.overrides ?? {};
   const a = fc.findIndex((r) => r.sales > 0);
   let b = fc.length - 1;
@@ -84,13 +82,12 @@ export function analyze(fc: FcRow[], s: Settings, o: AnalyzeOpts = {}): Analysis
   const lvl = B.map((_, i) => rushRaw.find((r) => i >= r.i0 && i <= r.i1)?.level ?? null);
 
   // ---- crew per 15
-  const bohCap = Math.max(s.minBoh, maxSeats(positions, 'boh')); // can't put more people on BOH than it has seats
   const L: Row[] = B.map((r, i) => {
     const p = B[i - 1] ? B[i - 1].sales : r.sales, n = B[i + 1] ? B[i + 1].sales : r.sales;
     const rate = ((p + 2 * r.sales + n) / 4) * (60 / step);
     const splh = lvl[i] === 'big' ? s.rushSplh : lvl[i] === 'medium' ? (s.splh + s.rushSplh) / 2 : s.splh;
     const tot = Math.max(s.minFoh + s.minBoh, Math.ceil(rate / splh));
-    const boh = Math.min(bohCap, Math.max(s.minBoh, Math.round((tot * s.boh) / 100)));
+    const boh = Math.max(s.minBoh, Math.round((tot * s.boh) / 100));
     const foh = Math.max(s.minFoh, tot - boh);
     // hand edits for this hour win over the forecast
     const e = ov[String(Math.floor(r.min / 60))];

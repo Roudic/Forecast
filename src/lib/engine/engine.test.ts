@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  analyze, backtest, deploy, lineup, DEFAULT_POSITIONS, positionsWithDefaults, daysFor, DEFAULT_SETTINGS, forecastFrom, makeSample, parseCSV, shiftsFor, buildPlan, floorState, huddleText,
+  analyze, backtest, daysFor, DEFAULT_SETTINGS, forecastFrom, makeSample, parseCSV, shiftsFor, buildPlan, floorState, huddleText,
 } from './index';
 
 const S = DEFAULT_SETTINGS;
@@ -53,23 +53,8 @@ describe('forecast + peaks', () => {
   });
 });
 
-describe('positions + hand edits', () => {
+describe('hand edits', () => {
   const days = makeSample();
-  it('fills seats in order and reports extras', () => {
-    const d = deploy(4, ['Primary', 'Breading', 'Primary', 'Fries']);
-    expect(d.counts).toEqual({ Primary: 2, Breading: 1, Fries: 1 });
-    expect(deploy(6, ['Primary', 'Breading']).extra).toBe(4);
-  });
-  it('switches to the breakfast board before the cutoff', () => {
-    expect(lineup(3, 4, 420).am).toBe(true);
-    expect(Object.keys(lineup(3, 4, 420).boh.counts)).toContain('Biscuits');
-    expect(lineup(3, 4, 720, DEFAULT_POSITIONS).am).toBe(false);
-  });
-  it('repairs a partial saved config', () => {
-    const p = positionsWithDefaults({ amCutoff: 600, seats: { boh: { am: ['Grill'], day: ['Grill', 'Primary'] } } } as never);
-    expect(p.stations.boh).toContain('Grill');
-    expect(p.seats.foh.day.length).toBeGreaterThan(0);
-  });
   it('applies hour edits to the counts', () => {
     const fc = forecastFrom(daysFor(days, 5), S);
     const base = analyze(fc, S)!;

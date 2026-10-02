@@ -1,10 +1,9 @@
 import { motion } from 'framer-motion';
 import {
-  buildPlan, countdownTarget, dayLabel, dur, floorState, fmt, fmtShort, huddleText, LEVEL_LABEL, lineupFor, money,
-  type Analysis, type DayFilter, type Deploy, type FloorState,
+  buildPlan, countdownTarget, dayLabel, dur, floorState, fmt, fmtShort, huddleText, LEVEL_LABEL, money,
+  type Analysis, type DayFilter, type FloorState,
 } from '../lib/engine';
 import { Card, CountUp, useCopy } from './ui';
-import { useStoreCfg } from '../hooks/storeContext';
 import { Legend, SalesChart } from './Charts';
 
 /** Countdown text: seconds when running on the live clock, minutes when someone picked a time. */
@@ -29,10 +28,8 @@ type Props = {
 };
 
 export function Floor({ an, filter, now, clock, live, setLive, setManual, onTV }: Props) {
-  const { positions } = useStoreCfg();
   const st = floorState(an, now);
   const t = st.target;
-  const lu = lineupFor(st, positions);
   const ev = buildPlan(an).filter((e) => e.t >= now - an.step);
   const nextIdx = ev.findIndex((e) => e.t > now);
   const cd = countdownTarget(st, now);
@@ -54,7 +51,7 @@ export function Floor({ an, filter, now, clock, live, setLive, setManual, onTV }
           </label>
           <div className="ml-auto flex flex-wrap gap-2.5">
             <button type="button" className="btn" onClick={onTV}>Kitchen TV</button>
-            <button type="button" className="btn" onClick={() => copy(huddleText(an, now, dayLabel(filter), positions), 'Huddle copied. Paste it in the group chat.')}>Copy shift huddle</button>
+            <button type="button" className="btn" onClick={() => copy(huddleText(an, now, dayLabel(filter)), 'Huddle copied. Paste it in the group chat.')}>Copy shift huddle</button>
           </div>
         </div>
         {box}
@@ -126,13 +123,6 @@ export function Floor({ an, filter, now, clock, live, setLive, setManual, onTV }
         </Card>
       </div>
 
-      <Card title={`Line positions ${t ? 'for the rush peak' : 'right now'}`} sub={`${lu.am ? 'Breakfast board' : 'Lunch/dinner board'} · bars show how full each station is`} delay={4}>
-        <button type="button" className="btn btn-sm mb-3" onClick={() => { const d = document.getElementById('positions-editor') as HTMLDetailsElement | null; if (d) { d.open = true; d.scrollIntoView({ behavior: 'smooth' }); } }}>Edit positions</button>
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,270px),1fr))] gap-[18px]">
-          <Stations title={`BOH · ${t ? t.peakBoh : st.nowRow.boh}`} d={lu.boh} side="boh" />
-          <Stations title={`FOH · ${t ? t.peakFoh : st.nowRow.foh}`} d={lu.foh} side="foh" />
-        </div>
-      </Card>
 
       <Card title="Game plan" sub={`From ${fmt(now)} to close`} delay={5}>
         <ol className="grid gap-2.5">
@@ -177,26 +167,6 @@ function Big({ label, children, c = '', size = 'text-[58px]' }: { label: string;
   return <div className="grid gap-0.5"><span className="label">{label}</span><span className={`font-display font-bold leading-none num ${size} ${c}`}>{children}</span></div>;
 }
 
-function Stations({ title, d, side }: { title: string; d: Deploy; side: 'foh' | 'boh' }) {
-  return (
-    <div>
-      <h3 className={`mb-2.5 text-xl uppercase tracking-[0.04em] ${side === 'foh' ? 'text-foh' : 'text-red-text'}`}>{title}</h3>
-      <div className="grid gap-2">
-        {Object.entries(d.counts).map(([k, v], i) => (
-          <div key={k} className={`grid grid-cols-[1fr_auto] items-center gap-x-2.5 gap-y-1 rounded-xl border border-line bg-panel2 px-3.5 py-2.5 font-bold ${v ? '' : 'opacity-40'}`}>
-            <span>{k}</span>
-            <span className={`text-right font-display text-[26px] num ${side === 'foh' ? 'text-foh' : 'text-red-text'}`}>{v}</span>
-            <span className="col-span-2 h-[5px] overflow-hidden rounded-full bg-panel3">
-              <motion.i className={`block h-full rounded-full ${side === 'foh' ? 'bg-foh' : 'bg-red'}`} style={{ originX: 0, width: `${(v / d.cap[k]) * 100}%` }}
-                initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: 0.7, delay: i * 0.05 }} />
-            </span>
-          </div>
-        ))}
-        {d.extra > 0 && <div className="text-sm text-muted">+{d.extra} more than the stations hold. Use them as runners or on prep.</div>}
-      </div>
-    </div>
-  );
-}
 
 export function DayRail({ an, now, tall = false }: { an: Analysis; now: number; tall?: boolean }) {
   const span = an.close - an.open;

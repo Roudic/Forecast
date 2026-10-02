@@ -101,8 +101,7 @@ export type Settings = {
   splhGoal: number;
 };
 
-import type { Side } from './positions';
-export type { Side };
+export type Side = 'foh' | 'boh';
 /** Hand edits to the counts, by hour (6 = 6 AM hour). Only the sides set are changed. */
 export type HourOverride = { foh?: number; boh?: number };
 export type Overrides = Record<string, HourOverride>;

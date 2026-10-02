@@ -9,7 +9,6 @@ import { KitchenTV } from './components/KitchenTV';
 import { DataPanel, SettingsPanel } from './components/Panels';
 import { JoinStore } from './components/JoinStore';
 import { ToastHost, useToast } from './components/ui';
-import { PositionsEditor } from './components/PositionsEditor';
 import { overridesFor, StoreCtx } from './hooks/storeContext';
 
 export default function App() {
@@ -37,7 +36,7 @@ function Splash({ text, error }: { text: string; error?: boolean }) {
 
 function Main() {
   const toast = useToast();
-  const { loading, days, realDays, isSample, settings, plans, error, positions, overrides } = useStoreData(true);
+  const { loading, days, realDays, isSample, settings, plans, error, overrides } = useStoreData(true);
   const [mode, setMode] = useDeviceState<Mode>('rf.mode', 'sched');
   const [filter, setFilter] = useState<DayFilter | null>(null);
   const [live, setLive] = useState(true);
@@ -57,9 +56,9 @@ function Main() {
   const f: DayFilter = filter ?? 'all';
 
   const ds = useMemo(() => daysFor(days, f), [days, f]);
-  const an = useMemo(() => analyze(forecastFrom(ds, settings), settings, { positions, overrides: overridesFor(overrides, f) }), [ds, settings, positions, overrides, f]);
+  const an = useMemo(() => analyze(forecastFrom(ds, settings), settings, { overrides: overridesFor(overrides, f) }), [ds, settings, overrides, f]);
   const canSave = !isSample || backend.mode === 'local';
-  const cfg = useMemo(() => ({ positions, overrides, canSave }), [positions, overrides, canSave]);
+  const cfg = useMemo(() => ({ overrides, canSave }), [overrides, canSave]);
 
   const liveMin = nowMinutes(clock);
   const useLive = live && !!an && !(isSample && (liveMin < an.open || liveMin >= an.close));
@@ -114,7 +113,6 @@ function Main() {
         )}
       </main>
       <div className="grid gap-[18px]">
-        <PositionsEditor />
         <SettingsPanel settings={settings} canSave={canSave} />
         <DataPanel days={realDays} isSample={isSample} />
       </div>

@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
-import { useStoreCfg } from '../hooks/storeContext';
 import { AnimatePresence, motion } from 'framer-motion';
-import { buildPlan, countdownTarget, dayLabel, floorState, fmt, lineupFor, type Analysis, type DayFilter } from '../lib/engine';
+import { buildPlan, countdownTarget, dayLabel, floorState, fmt, type Analysis, type DayFilter } from '../lib/engine';
 import { countdown, DayRail, statusStyle } from './Floor';
 
 const EV: Record<string, string> = { rush: 'border-l-red', ready: 'border-l-red', stock: 'border-l-warn', reset: 'border-l-warn', cut: 'border-l-warn', break: 'border-l-ok', add: 'border-l-foh' };
@@ -22,14 +21,9 @@ export function KitchenTV({ an, filter, now, clock, onExit }: { an: Analysis; fi
     };
   }, [onExit]);
 
-  const { positions } = useStoreCfg();
-  const st = floorState(an, now), t = st.target, cd = countdownTarget(st, now), lu = lineupFor(st, positions);
+  const st = floorState(an, now), t = st.target, cd = countdownTarget(st, now);
   const ev = buildPlan(an).filter((e) => e.t > now).slice(0, 3);
   const sty = statusStyle[st.cls];
-  const chips = (counts: Record<string, number>, c: string) =>
-    Object.entries(counts).filter(([, v]) => v).map(([k, v]) => (
-      <span key={k} className="inline-flex items-center gap-2.5 rounded-xl bg-panel2 px-3.5 py-2 text-xl font-bold"><b className={`font-display text-3xl ${c}`}>{v}</b>{k}</span>
-    ));
 
   return (
     <div className="grid gap-[22px] px-[clamp(16px,3vw,40px)] py-[18px]">
@@ -64,7 +58,6 @@ export function KitchenTV({ an, filter, now, clock, onExit }: { an: Analysis; fi
         <Box label={t ? `For the ${t.dp.toLowerCase()} peak · ${fmt(t.peakMin)}` : 'Rest of day'}>
           <Nums f={t ? t.peakFoh : st.nowRow.foh} b={t ? t.peakBoh : st.nowRow.boh} />
         </Box>
-        <Box label="Positions" wide><div className="flex flex-wrap gap-2.5">{chips(lu.boh.counts, 'text-red-text')}{chips(lu.foh.counts, 'text-foh')}</div></Box>
         <Box label="Coming up" wide>
           <ol className="grid gap-2.5">
             {ev.length ? ev.map((e, i) => (

@@ -137,12 +137,12 @@ export function PeakCards({ an }: { an: Analysis }) {
 }
 
 function WeekStrip({ days, filter, setFilter, s }: { days: Day[]; filter: DayFilter; setFilter: (f: DayFilter) => void; s: Settings }) {
-  const { positions, overrides } = useStoreCfg();
+  const { overrides } = useStoreCfg();
   const res = useMemo(() => {
     const wds = [...new Set(days.map((d) => d.wd).filter((v): v is number => v != null))].sort((a, b) => a - b);
-    return wds.map((w) => { const ds = daysFor(days, w); const an = analyze(forecastFrom(ds, s), s, { positions, overrides: overridesFor(overrides, w) }); return an && { w, an, n: ds.length }; })
+    return wds.map((w) => { const ds = daysFor(days, w); const an = analyze(forecastFrom(ds, s), s, { overrides: overridesFor(overrides, w) }); return an && { w, an, n: ds.length }; })
       .filter((x): x is { w: number; an: Analysis; n: number } => !!x);
-  }, [days, s, positions, overrides]);
+  }, [days, s, overrides]);
   if (res.length < 2) return null;
   const mx = Math.max(...res.map((r) => Math.max(...r.an.L.map((x) => x.sales))));
   return (

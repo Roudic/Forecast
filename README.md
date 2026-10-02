@@ -3,7 +3,7 @@
 Hueytown #06123 forecasting tool for team leaders. Upload 15-minute sales CSVs and get:
 
 - **Scheduler**: FOH/BOH counts for every 15 minutes, a peak for every daypart, an hour-by-hour table, and a **Shift Builder** that turns the counts into real shifts you can put names on and save.
-- **On the Floor**: a live status (steady / rush coming / in the rush), a countdown, line positions, a game plan with stock-up, lineup lock, and reset times, plus break windows and a copyable shift huddle.
+- **On the Floor**: a live status (steady / rush coming / in the rush), a countdown, FOH/BOH counts, a game plan with stock-up, lineup lock, and reset times, plus break windows and a copyable shift huddle.
 - **Kitchen TV**: a full-screen board for the kitchen TV with a big countdown that ticks every second.
 
 Every iPad and the kitchen TV share one Firebase database, so uploads, settings, and saved plans show up everywhere.
@@ -69,7 +69,6 @@ storeSecrets/{storeId}          { joinCode }                     never readable 
 stores/{storeId}/
   members/{uid}                 { name, code, joinedAt }          devices allowed in this store
   config/settings               SPLH, BOH %, shift rules, …       shared by every leader
-  config/positions              stations + seat order             FOH/BOH, breakfast + lunch/dinner boards
   config/overrides              hand-edited counts by hour         per weekday
   days/{YYYY-MM-DD}             { key, wd, dn, source, slots[] }  one doc per business day
   plans/{YYYY-MM-DD}            { name, shifts[{…, who}] }        saved shift plans with names
@@ -90,7 +89,7 @@ Want more stores? Deploy the same repo again with a different `VITE_STORE_ID`, a
 | Busy day | Staffs to the 80th percentile instead of the average. |
 | Peaks per daypart | Breakfast (to 10:30), Lunch (to 2:00), Afternoon (to 4:30), and Dinner each get their own peak 15. The rush window is every 15 within 70% of that peak. |
 | Rush strength | Big rush = peak ≥ 1.35× the day's average, staffed at Rush SPLH. Rush = in between. Light bump = staffed at normal SPLH and doesn't block breaks. |
-| Crew | Smoothed sales per hour ÷ SPLH, split by BOH %, floored at the minimums, capped at station limits. |
+| Crew | Smoothed sales per hour ÷ SPLH, split by BOH %, floored at the minimums. Leaders can hand-edit any hour. |
 | Shift Builder | Sweeps the day, adds a shift when the curve needs one, and cuts the longest-worked person once they've hit the shortest shift. It holds crew through dips shorter than 60 min and caps everyone at the longest shift. |
 | Accuracy check | Hides the latest day of each weekday, forecasts it from the earlier ones, and scores the result. |
 

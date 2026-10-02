@@ -1,6 +1,5 @@
 import type { Analysis, Peak, Shift } from './types';
 import { dur, fmt, money, WD } from './format';
-import { DEFAULT_POSITIONS, lineup, type Positions } from './positions';
 
 export type PlanEvent = { t: number; k: 'stock' | 'ready' | 'rush' | 'reset' | 'break' | 'cut' | 'add'; w: string; d: string; list?: string[] };
 
@@ -65,7 +64,7 @@ export function floorState(an: Analysis, now: number) {
     sub = `Small push until ${fmt(cur.end)}. Hold ${cur.peakFoh} FOH / ${cur.peakBoh} BOH on the line and keep breaks moving.`;
   } else if (cur) {
     cls = 'inrush'; tag = 'In the rush'; head = `${cur.name}: ${dur(cur.end - now)} left`;
-    sub = `Peak at ${fmt(cur.peakMin)}. Hold positions. No breaks until ${fmt(cur.end)}, then reset.`;
+    sub = `Peak at ${fmt(cur.peakMin)}. Hold the line. No breaks until ${fmt(cur.end)}, then reset.`;
   } else if (next && next.level !== 'light' && next.start - now <= 45) {
     cls = 'coming'; tag = 'Rush coming'; head = `${next.name} in ${dur(next.start - now)}`;
     sub = `Starts ${fmt(next.start)} and runs about ${dur(next.end - next.start)} to ${fmt(next.end)}. Finish stock-up and pull breaks back now.`;
@@ -86,14 +85,8 @@ export function countdownTarget(st: FloorState, now: number): { t: number; label
   return null;
 }
 
-export function lineupFor(st: FloorState, p: Positions = DEFAULT_POSITIONS) {
-  const t = st.target;
-  return t ? lineup(t.peakFoh, t.peakBoh, t.peakMin, p) : lineup(st.nowRow.foh, st.nowRow.boh, st.nowRow.min, p);
-}
-
-export function huddleText(an: Analysis, now: number, dayLabel: string, p: Positions = DEFAULT_POSITIONS) {
-  const st = floorState(an, now), t = st.target, lu = lineupFor(st, p);
-  const list = (d: { counts: Record<string, number> }) => Object.entries(d.counts).filter(([, v]) => v).map(([k, v]) => `${k} ${v}`).join(', ');
+export function huddleText(an: Analysis, now: number, dayLabel: string) {
+  const st = floorState(an, now), t = st.target;
   const out = [`HUEYTOWN HUDDLE · ${dayLabel} ${fmt(now)}`, `${st.tag.toUpperCase()}: ${st.head}`, st.sub, '', `On the clock now: ${st.nowRow.foh} FOH / ${st.nowRow.boh} BOH`];
   if (t) out.push(
     `${t.name}: ${fmt(t.start)}–${fmt(t.end)} (${dur(t.end - t.start)}), peak ${fmt(t.peakMin)}`,
@@ -102,7 +95,6 @@ export function huddleText(an: Analysis, now: number, dayLabel: string, p: Posit
   out.push('', 'PEAKS TODAY', ...an.peaks.map((p) => p.none
     ? `${p.dp}: busiest 15 at ${p.peakMin != null ? fmt(p.peakMin) : '—'} (${p.why.toLowerCase()})`
     : `${p.dp}: peak ${fmt(p.peakMin)} · window ${fmt(p.start)}–${fmt(p.end)} · ${p.peakFoh} FOH / ${p.peakBoh} BOH${now >= p.end ? ' (done)' : ''}`));
-  out.push('', `BOH: ${list(lu.boh)}`, `FOH: ${list(lu.foh)}`);
   if (st.brNow) out.push(`Breaks: send now until ${fmt(st.brNow.end)}, ${st.brNow.send} at a time.`);
   else if (st.brNext) out.push(`Breaks: next window ${fmt(st.brNext.start)}–${fmt(st.brNext.end)}.`);
   return out.join('\n');

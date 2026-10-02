@@ -25,24 +25,23 @@ src/lib/engine/     pure logic, no React; tested in engine.test.ts
   csv.ts            parse any 15-min export → Day[]
   forecast.ts       daysFor, forecastFrom (smart avg / busy day), backtest
   analyze.ts        per-daypart peaks, crew per 15, breaks, hourly, dayparts
-  positions.ts      editable line positions: stations + ordered seats per side, breakfast vs lunch/dinner board
   shifts.ts         Shift Builder sweep
   floor.ts          game plan, floor state, countdown, huddle + shift text
   settings.ts       DEFAULT_SETTINGS (Hueytown targets)
 src/lib/backend.ts  Firestore + demo backends, join flow
 src/lib/firebase.ts Firebase init
 src/hooks/useStore.ts  access, live data subscriptions, clock
-src/hooks/storeContext.ts  positions + hand-edited counts shared to every screen
-src/components/     TopBar, Scheduler (hour table with Edit counts), ShiftBuilder, Floor, KitchenTV, PositionsEditor, Panels (settings + data), JoinStore, Charts, ui
+src/hooks/storeContext.ts  hand-edited counts shared to every screen
+src/components/     TopBar, Scheduler (hour table with Edit counts), ShiftBuilder, Floor, KitchenTV, Panels (settings + data), JoinStore, Charts, ui
 ```
 
 ## Rules of the road
 - Keep the engine pure. UI calls `analyze(forecastFrom(daysFor(days, filter), settings), settings)`.
-- Settings live in Firestore at `stores/{id}/config/settings`, positions at `config/positions`, and hand-edited counts at `config/overrides` ({byDay: {[weekday|'all']: {[hour]: {foh, boh}}}}). All are shared by the whole store.
+- Settings live in Firestore at `stores/{id}/config/settings`, and hand-edited counts at `config/overrides` ({byDay: {[weekday|'all']: {[hour]: {foh, boh}}}}). All are shared by the whole store.
 - Hand edits win over the forecast in `analyze()`; rows keep `autoFoh`/`autoBoh` so the UI can show "was N".
 - Never use `alert`/`confirm`. Use `ConfirmButton` (two-tap) instead.
 - Hueytown targets: labor 19%, SPLH $70 building spot, $75 goal.
-- Station caps: Primary 3, Secondary 2, Breading 2.
+- No station/position breakdown on purpose: leaders found it confusing. The app gives FOH/BOH counts only.
 - Run `npm test` and `npm run build` before pushing.
 
 ## Ideas parked for later

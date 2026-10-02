@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root { color-scheme: dark; }
+  html, body { @apply bg-bg text-fg; }
+  body {
+    @apply font-body text-[17px] leading-relaxed antialiased;
+    background: radial-gradient(1200px 500px at 85% -120px, rgba(229, 22, 54, 0.1), transparent 60%), #110d0f;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  h1, h2, h3 { @apply font-display tracking-[0.01em]; text-wrap: balance; }
+  :focus-visible { outline: 3px solid #f2aa3c; outline-offset: 2px; }
+  button, select, input { font: inherit; color: inherit; }
+}
+
+@layer components {
+  .card { @apply rounded-[18px] border border-line p-5 min-w-0 shadow-card; background: linear-gradient(180deg, #1b1619, #17121a); }
+  .card-title { @apply font-display text-[21px] font-bold uppercase tracking-[0.05em] mb-3.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1; }
+  .card-title small { @apply font-body text-sm normal-case tracking-normal text-muted font-normal; }
+  .label { @apply text-xs font-bold uppercase tracking-[0.09em] text-muted; }
+  .btn { @apply inline-flex items-center justify-center gap-2 min-h-12 rounded-xl border border-line bg-panel2 px-4 py-2.5 font-bold transition hover:border-muted active:scale-[.97] disabled:opacity-50; }
+  .btn-primary { @apply border-transparent text-white shadow-glow; background: linear-gradient(180deg, #e51636, #b80f2b); }
+  .btn-sm { @apply min-h-10 px-3 py-1.5 text-sm; }
+  .field { @apply min-h-12 w-full rounded-xl border border-line bg-panel2 px-3 py-2.5 font-bold tabular-nums; }
+  .tile { @apply rounded-2xl border border-line bg-panel2 p-3.5; }
+  .num { font-variant-numeric: tabular-nums; }
+}
+
+@keyframes ring { 0% { transform: scale(.6); opacity: .9 } 100% { transform: scale(1.8); opacity: 0 } }
+.pulse-dot { position: relative; width: 12px; height: 12px; border-radius: 999px; background: currentColor; }
+.pulse-dot::after { content: ""; position: absolute; inset: -6px; border-radius: 999px; border: 2px solid currentColor; animation: ring 1.8s ease-out infinite; }
+@keyframes grow { from { transform: scaleY(0) } }
+.bar-grow { transform-box: fill-box; transform-origin: 50% 100%; animation: grow .7s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes fillx { from { transform: scaleX(0) } }
+.fill-x { transform-origin: left; animation: fillx .7s cubic-bezier(.2,.8,.2,1) both; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+.calm *, .calm *::before, .calm *::after { animation: none !important; }

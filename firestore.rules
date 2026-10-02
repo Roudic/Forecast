@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isMember(storeId) {
+      return signedIn() && exists(/databases/$(db)/documents/stores/$(storeId)/members/$(request.auth.uid));
+    }
+
+    // The join code lives here. The app can never read it; the rules below check it on join.
+    match /storeSecrets/{storeId} {
+      allow read, write: if false;
+    }
+
+    match /stores/{storeId} {
+      allow read: if isMember(storeId);
+
+      // A device joins a store by writing its own member doc with the right code.
+      match /members/{uid} {
+        allow get: if signedIn() && request.auth.uid == uid;
+        allow list: if isMember(storeId);
+        allow create: if signedIn() && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['code', 'name', 'joinedAt'])
+          && request.resource.data.code == get(/databases/$(db)/documents/storeSecrets/$(storeId)).data.joinCode;
+        allow update, delete: if false; // remove devices from the Firebase console
+      }
+
+      match /days/{dayKey} {
+        allow read, delete: if isMember(storeId);
+        allow create, update: if isMember(storeId)
+          && request.resource.data.key == dayKey
+          && request.resource.data.slots is list
+          && request.resource.data.slots.size() <= 200;
+      }
+
+      match /plans/{planId} {
+        allow read, write: if isMember(storeId);
+      }
+
+      match /config/{docId} {
+        allow read, write: if isMember(storeId);
+      }
+    }
+  }
+}

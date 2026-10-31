@@ -6,6 +6,7 @@ import {
 } from '../lib/engine';
 import { Card, CountUp, useCopy } from './ui';
 import { Legend, SalesChart } from './Charts';
+import { PinpointPanel, ScrubHint, useScrub } from './Pinpoint';
 
 /** Countdown text: seconds when running on the live clock, minutes when someone picked a time. */
 export function countdown(target: number, nowMin: number, clock: Date | null) {
@@ -30,6 +31,8 @@ type Props = {
 };
 
 export function Floor({ an, filter, now, clock, live, setLive, setManual, onTV, pace, paceAmount, paceAllowed, setPace }: Props) {
+  const [pin, setPin] = useState<number | null>(null);
+  const pinMin = pin ?? Math.max(an.open, Math.min(an.close - an.step, Math.floor(now / an.step) * an.step));
   const st = floorState(an, now);
   const t = st.target;
   const ev = buildPlan(an).filter((e) => e.t >= now - an.step);
@@ -72,7 +75,9 @@ export function Floor({ an, filter, now, clock, live, setLive, setManual, onTV, 
             <span className="font-display text-[clamp(30px,5vw,44px)] font-bold leading-none num">{countdown(cd.t, now, clock)}</span>
           </div>
         )}
-        <DayRail an={an} now={now} />
+        <DayRail an={an} now={now} pin={pinMin} onPin={setPin} />
+        <ScrubHint text="Tap or drag the timeline to pinpoint any 15." />
+        <PinpointPanel an={an} min={pinMin} onClose={pin != null ? () => setPin(null) : undefined} closeLabel="Back to now" />
       </motion.section>
 
       <PaceCard pace={pace} amount={paceAmount} allowed={paceAllowed} now={now} onSet={setPace} />
@@ -156,7 +161,8 @@ export function Floor({ an, filter, now, clock, live, setLive, setManual, onTV, 
       </Card>
 
       <Card title="The day at a glance" delay={7}>
-        <SalesChart an={an} now={now} />
+        <SalesChart an={an} now={now} pin={pinMin} onPin={setPin} />
+        <PinpointPanel an={an} min={pinMin} onClose={pin != null ? () => setPin(null) : undefined} closeLabel="Back to now" />
         <Legend items={[['#E51636', 'Rush'], ['#F2AA3C', 'Light bump'], ['rgba(246,240,242,.07)', 'Normal range', true], ['#33260F', 'Stock-up / reset', true], ['#112B22', 'Break window', true]]} />
       </Card>
     </div>
@@ -172,7 +178,8 @@ function Big({ label, children, c = '', size = 'text-[58px]' }: { label: string;
 }
 
 
-export function DayRail({ an, now, tall = false }: { an: Analysis; now: number; tall?: boolean }) {
+export function DayRail({ an, now, tall = false, pin, onPin }: { an: Analysis; now: number; tall?: boolean; pin?: number | null; onPin?: (m: number) => void }) {
+  const scrub = useScrub(an.open, an.close, an.step, onPin ?? (() => {}));
   const span = an.close - an.open;
   const p = (m: number) => Math.min(100, Math.max(0, ((m - an.open) / span) * 100));
   const ticks: number[] = [];
@@ -180,13 +187,17 @@ export function DayRail({ an, now, tall = false }: { an: Analysis; now: number; 
   const seg = (a: number, b: number, c: string, k: string) => <span key={k} className={`absolute inset-y-0 ${c}`} style={{ left: `${p(a)}%`, width: `${p(b) - p(a)}%` }} />;
   return (
     <div className="relative mt-2.5">
-      <div className={`relative overflow-hidden rounded-xl bg-panel3 ${tall ? 'h-14' : 'h-11'}`} aria-hidden>
+      <div ref={onPin ? scrub.ref : undefined} {...(onPin ? scrub.handlers : {})} style={onPin ? { touchAction: 'pan-y' } : undefined}
+        className={`relative overflow-hidden rounded-xl bg-panel3 ${tall ? 'h-14' : 'h-11'} ${onPin ? 'cursor-crosshair' : ''}`} aria-hidden>
         {an.breaks.map((b) => seg(b.start, b.end, 'bg-ok/35', 'b' + b.start))}
         {an.rushes.map((r) => r.level === 'light'
           ? seg(r.start, r.end, 'bg-warn/45', 'l' + r.start)
           : [seg(r.start - 45, r.start, 'bg-warn/45', 's' + r.start), seg(r.start, r.end, 'bg-gradient-to-b from-red to-red-2', 'r' + r.start), seg(r.end, r.end + 30, 'bg-warn/45', 'e' + r.start)])}
         <span className="absolute inset-y-0 left-0 bg-black/45 transition-[width] duration-1000" style={{ width: `${p(now)}%` }} />
         {now >= an.open && now <= an.close && <span className="absolute -inset-y-0.5 w-[3px] bg-fg shadow-[0_0_12px_rgba(255,255,255,.8)] transition-[left] duration-1000" style={{ left: `calc(${p(now)}% - 1px)` }} />}
+        {pin != null && pin !== Math.floor(now / an.step) * an.step && (
+          <span className="pointer-events-none absolute inset-y-0 rounded-md border-2 border-fg bg-white/15" style={{ left: `${p(pin)}%`, width: `${p(pin + an.step) - p(pin)}%`, minWidth: 6 }} />
+        )}
       </div>
       <div className="mt-1 flex justify-between text-xs text-muted num">{ticks.map((m) => <span key={m}>{fmtShort(m)}</span>)}</div>
     </div>

@@ -111,3 +111,45 @@ export function shiftText(an: Analysis, shifts: (Shift & { who?: string })[], ti
 }
 
 export const dayLabel = (f: 'all' | number) => (f === 'all' ? 'Average day' : WD[f]);
+
+/* ---------------- pinpoint: what's happening at any 15 ---------------- */
+export type MomentKind = 'rush' | 'peak' | 'bump' | 'stock' | 'lock' | 'reset' | 'break' | 'steady' | 'closed';
+export type Moment = {
+  min: number; kind: MomentKind; title: string; detail: string;
+  sales: number; low: number; high: number; foh: number; boh: number; trans: number | null; edited: boolean;
+  /** 0–1 share of the day's sales done by the end of this 15 */
+  doneShare: number;
+};
+
+/** Everything a leader wants to know about one 15-minute window, in plain words. */
+export function momentAt(an: Analysis, minute: number): Moment {
+  const { L, step } = an;
+  let i = L.findIndex((r) => minute >= r.min && minute < r.min + step);
+  if (i < 0) i = minute < an.open ? 0 : L.length - 1;
+  const r = L[i];
+  const m = r.min;
+  const upTo = L.slice(0, i + 1).reduce((a, x) => a + x.sales, 0);
+  const base = { min: m, sales: r.sales, low: r.low, high: r.high, foh: r.foh, boh: r.boh, trans: r.trans, edited: r.edited, doneShare: an.total ? upTo / an.total : 0 };
+  const rush = an.rushes.find((p) => m >= p.start && m < p.end);
+  if (rush) {
+    const isPeak = m === rush.peakMin;
+    const left = rush.end - m;
+    if (rush.level === 'light') return { ...base, kind: 'bump', title: isPeak ? `${rush.dp} bump · peak 15` : `${rush.dp} bump`, detail: `Small push until ${fmt(rush.end)}. Keep breaks moving.` };
+    return {
+      ...base, kind: isPeak ? 'peak' : 'rush',
+      title: isPeak ? `${rush.name} · PEAK 15` : `${rush.name} · ${m < rush.peakMin ? 'building' : 'coming down'}`,
+      detail: isPeak ? `Busiest 15 of ${rush.dp.toLowerCase()}. Everyone on position, no breaks.` : `${dur(left)} left in the rush (ends ${fmt(rush.end)}). Peak ${m < rush.peakMin ? 'at' : 'was'} ${fmt(rush.peakMin)}.`,
+    };
+  }
+  const big = an.rushes.filter((p) => p.level !== 'light');
+  const lock = big.find((p) => m >= p.start - 15 && m < p.start);
+  if (lock) return { ...base, kind: 'lock', title: `Lineup locked for ${lock.name.toLowerCase()}`, detail: `All breaks back. ${lock.peakFoh} FOH / ${lock.peakBoh} BOH on position by ${fmt(lock.start - 15)}.` };
+  const stock = big.find((p) => m >= p.start - 45 && m < p.start - 15);
+  if (stock) return { ...base, kind: 'stock', title: `Stock-up for ${stock.name.toLowerCase()}`, detail: `Rush starts ${fmt(stock.start)} (${dur(stock.start - m)} away). Fill everything now.` };
+  const reset = big.find((p) => m >= p.end && m < p.end + 30);
+  if (reset) return { ...base, kind: 'reset', title: `Reset after ${reset.name.toLowerCase()}`, detail: 'Clean boards, restock what ran low, check holding times.' };
+  const br = an.breaks.find((b) => m >= b.start && m < b.end);
+  if (br) return { ...base, kind: 'break', title: an.bestBreak === br ? 'Break window · best of the day' : 'Break window', detail: `Send ${br.send} at a time until ${fmt(br.end)}.` };
+  const next = an.rushes.find((p) => p.start > m);
+  return { ...base, kind: 'steady', title: 'Steady', detail: next ? `Next: ${next.name.toLowerCase()} at ${fmt(next.start)} (${dur(next.start - m)} away).` : 'No more rushes. Cut to the counts as it slows.' };
+}

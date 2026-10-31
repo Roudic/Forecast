@@ -10,6 +10,7 @@ import { Card, ConfirmButton, CountUp, Kpi, Rise, tone, useToast } from './ui';
 import { CrewChart, Legend, SalesChart, Spark } from './Charts';
 import { ShiftBuilder } from './ShiftBuilder';
 import { AccuracyTile, ForecastReportCard } from './ForecastReport';
+import { PinpointPanel } from './Pinpoint';
 
 type Props = { an: Analysis; report: ForecastReport; ds: Day[]; days: Day[]; filter: DayFilter; date: string; todayIso: string; setDate: (iso: string) => void; settings: Settings; plans: SavedPlan[]; canSave: boolean };
 
@@ -51,8 +52,8 @@ export function Scheduler({ an, report, ds, days, filter, date, todayIso, setDat
 
       <ForecastReportCard r={report} />
 
-      <Card title="Sales by 15 minutes" sub="Shaded band = normal range across your days. Every daypart's peak is marked." delay={4}>
-        <SalesChart an={an} />
+      <Card title="Sales by 15 minutes" sub="Tap or drag across the chart to pinpoint any 15. Shaded band = normal range." delay={4}>
+        <PinChart an={an} />
         <Legend items={[['#E51636', 'Rush window'], ['#F2AA3C', 'Light bump'], ['#76696F', 'Normal'], ['rgba(246,240,242,.07)', 'Normal range', true], ['#33260F', 'Stock-up / reset', true], ['#112B22', 'Break window', true]]} />
       </Card>
 
@@ -255,5 +256,18 @@ function Step({ label, onClick, disabled, children }: { label: string; onClick: 
   return (
     <button type="button" aria-label={label} title={label} disabled={disabled} onClick={onClick}
       className="grid h-9 w-9 place-items-center rounded-lg border border-line bg-panel3 text-lg font-bold transition hover:border-muted active:scale-95 disabled:opacity-30">{children}</button>
+  );
+}
+
+/** Look Ahead sales chart with pinpoint. Starts on the day's biggest peak. */
+function PinChart({ an }: { an: Analysis }) {
+  const top = [...an.rushes].sort((a, b) => b.peakSales - a.peakSales)[0];
+  const [pin, setPin] = useState<number | null>(null);
+  const min = pin != null && an.L.some((r) => r.min === pin) ? pin : top ? top.peakMin : an.L[0].min;
+  return (
+    <>
+      <SalesChart an={an} pin={min} onPin={setPin} />
+      <PinpointPanel an={an} min={min} />
+    </>
   );
 }

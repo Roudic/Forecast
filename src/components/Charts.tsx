@@ -1,4 +1,5 @@
 import type { Analysis } from '../lib/engine';
+import { useScrub } from './Pinpoint';
 import { fmt, fmtShort, money } from '../lib/engine';
 
 const C = { line: '#352C30', muted: '#B5A8AD', faint: '#76696F', red: '#E51636', warn: '#F2AA3C', warnsoft: '#33260F', oksoft: '#112B22', foh: '#6FA9FF', fg: '#F6F0F2', band: 'rgba(246,240,242,.07)' };
@@ -9,14 +10,17 @@ function niceMax(v: number) {
   return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p;
 }
 
-export function SalesChart({ an, now }: { an: Analysis; now?: number | null }) {
+export function SalesChart({ an, now, pin, onPin }: { an: Analysis; now?: number | null; pin?: number | null; onPin?: (m: number) => void }) {
   const { L, step } = an, W = 1000, H = 260, pl = 58, pr = 12, pt = 30, pb = 32, bw = (W - pl - pr) / L.length;
   const mx = niceMax(Math.max(...L.map((r) => Math.max(r.sales, r.high))) * 1.08);
   const x = (m: number) => pl + ((m - L[0].min) / step) * bw;
   const y = (v: number) => pt + (H - pt - pb) * (1 - v / mx);
+  // the plot area runs from pl to W-pr; the scrub layer sits exactly over it
+  const scrub = useScrub(L[0].min, L[0].min + L.length * step, step, onPin ?? (() => {}));
+  const pinI = pin != null ? L.findIndex((r) => r.min === pin) : -1;
   return (
-    <div className="w-full overflow-x-auto">
-      <svg viewBox={`0 0 ${W} ${H}`} className="block h-auto w-full min-w-[640px]" role="img" aria-label="Forecast sales by 15 minutes">
+    <div className="relative w-full">
+      <svg viewBox={`0 0 ${W} ${H}`} className="block h-auto w-full" role="img" aria-label="Forecast sales by 15 minutes">
         {an.breaks.map((b) => <rect key={'b' + b.start} x={x(b.start)} y={pt} width={x(b.end) - x(b.start)} height={H - pt - pb} fill={C.oksoft} />)}
         {an.rushes.filter((r) => r.level !== 'light').map((r) => {
           const a = Math.max(pl, x(r.start - 45));
@@ -56,6 +60,12 @@ export function SalesChart({ an, now }: { an: Analysis; now?: number | null }) {
         {L.filter((r) => r.min % 120 === 0).map((r) => (
           <text key={'t' + r.min} x={x(r.min)} y={H - 10} textAnchor="middle" fontSize={12} fill={C.muted}>{fmtShort(r.min)}</text>
         ))}
+        {pinI >= 0 && (
+          <g pointerEvents="none">
+            <rect x={pl + pinI * bw} y={pt - 6} width={bw} height={H - pb - pt + 6} rx={3} fill="rgba(246,240,242,.12)" />
+            <line x1={pl + pinI * bw + bw / 2} x2={pl + pinI * bw + bw / 2} y1={pt - 6} y2={H - pb} stroke={C.fg} strokeWidth={1.5} strokeDasharray="3 3" />
+          </g>
+        )}
         {now != null && now >= L[0].min && now <= an.close && (
           <g>
             <line x1={x(now)} x2={x(now)} y1={pt - 4} y2={H - pb} stroke={C.fg} strokeWidth={2.5} />
@@ -63,6 +73,12 @@ export function SalesChart({ an, now }: { an: Analysis; now?: number | null }) {
           </g>
         )}
       </svg>
+      {onPin && (
+        <div ref={scrub.ref} {...scrub.handlers} aria-label="Tap or drag to pinpoint a time" role="slider" aria-valuemin={L[0].min} aria-valuemax={an.close} aria-valuenow={pin ?? undefined}
+          aria-valuetext={pin != null ? fmt(pin) : undefined} tabIndex={0}
+          onKeyDown={(e) => { if (pin == null) return; if (e.key === 'ArrowRight') onPin(Math.min(L[L.length - 1].min, pin + step)); if (e.key === 'ArrowLeft') onPin(Math.max(L[0].min, pin - step)); }}
+          className="absolute cursor-crosshair" style={{ left: `${(pl / W) * 100}%`, right: `${(pr / W) * 100}%`, top: 0, bottom: 0, touchAction: 'pan-y' }} />
+      )}
     </div>
   );
 }

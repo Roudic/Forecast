@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  paceAdjust, smartForecast, buildForecast, analyze, backtest, daysFor, DEFAULT_SETTINGS, forecastFrom, makeSample, parseCSV, shiftsFor, buildPlan, floorState, huddleText,
+  momentAt, paceAdjust, smartForecast, buildForecast, analyze, backtest, daysFor, DEFAULT_SETTINGS, forecastFrom, makeSample, parseCSV, shiftsFor, buildPlan, floorState, huddleText,
 } from './index';
 
 const S = DEFAULT_SETTINGS;
@@ -92,5 +92,21 @@ describe('multi-model forecast', () => {
     expect(p.pace.applied).toBeLessThan(1.2);
     expect(p.rows.find((r) => r.min === 600)!.sales).toBeCloseTo(rows.find((r) => r.min === 600)!.sales, 5);
     expect(p.rows.find((r) => r.min === 780)!.sales).toBeGreaterThan(rows.find((r) => r.min === 780)!.sales);
+  });
+});
+
+describe('pinpoint', () => {
+  const days = makeSample();
+  it('describes any 15 in plain words', () => {
+    const an = analyze(smartForecast(days, 5, S).rows, S)!;
+    const lunch = an.rushes.find((r) => r.dp === 'Lunch')!;
+    expect(momentAt(an, lunch.peakMin).kind).toBe('peak');
+    expect(momentAt(an, lunch.start - 30).kind).toBe('stock');
+    expect(momentAt(an, lunch.start - 10).kind).toBe('lock');
+    expect(momentAt(an, lunch.end).kind).toBe('reset');
+    const m = momentAt(an, lunch.peakMin);
+    expect(m.foh + m.boh).toBeGreaterThan(5);
+    expect(m.doneShare).toBeGreaterThan(0);
+    expect(m.doneShare).toBeLessThan(1);
   });
 });

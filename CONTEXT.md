@@ -27,13 +27,13 @@ src/lib/engine/     pure logic, no React; tested in engine.test.ts
   models.ts         6 models, outlier/partial-day detection, rolling-origin backtest, inverse-error blend, live paceAdjust
   analyze.ts        per-daypart peaks, crew per 15, breaks, hourly, dayparts
   shifts.ts         Shift Builder sweep
-  floor.ts          game plan, floor state, countdown, huddle + shift text
+  floor.ts          game plan, floor state, countdown, huddle + shift text, momentAt (pinpoint any 15)
   settings.ts       DEFAULT_SETTINGS (Hueytown targets)
 src/lib/backend.ts  Firestore + demo backends, join flow
 src/lib/firebase.ts Firebase init
 src/hooks/useStore.ts  access, live data subscriptions, clock
 src/hooks/storeContext.ts  hand-edited counts shared to every screen
-src/components/     TopBar (Today · Live / Look Ahead tabs), Scheduler = Look Ahead (next 7 days, hour table with Edit counts), ShiftBuilder, Floor, KitchenTV, Panels (settings + data), JoinStore, Charts, ui
+src/components/     TopBar (Today · Live / Look Ahead tabs), Scheduler = Look Ahead (next 7 days, hour table with Edit counts), ShiftBuilder, Floor, KitchenTV, Panels (settings + data), JoinStore, Charts (SalesChart is scrubbable), Pinpoint (useScrub + PinpointPanel), ui
 ```
 
 ## Rules of the road

@@ -79,3 +79,12 @@ export function backtest(days: Day[], f: DayFilter, s: Settings): Backtest | nul
     slotErr: bt.reduce((a, b) => a + b.slotErr, 0) / bt.length,
   };
 }
+
+import { smartForecast, type Forecast } from './models';
+
+/** What the app shows. 'auto' = multi-model blend; 'smart'/'straight' = the single averages, with the blend's report alongside. */
+export function buildForecast(days: Day[], f: DayFilter, s: Settings): Forecast {
+  if (s.method === 'auto') return smartForecast(days, f, s);
+  const report = smartForecast(days, f, { ...s, method: 'auto' }).report;
+  return { rows: forecastFrom(daysFor(days, f), s), report: { ...report, method: s.method } };
+}

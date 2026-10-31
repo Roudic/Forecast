@@ -2,7 +2,7 @@ import type { Settings } from './types';
 
 /** Hueytown defaults. Every value is editable in the app and saved to Firestore for the whole store. */
 export const DEFAULT_SETTINGS: Settings = {
-  method: 'smart',
+  method: 'auto', // blend of every model, weighted by how accurate each was on this store's history
   plan: 'typical',
   splh: 70, // building spot
   rushSplh: 90,

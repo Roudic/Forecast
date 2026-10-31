@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { analyze, CsvError, daysFor, forecastFrom, nowMinutes, parseCSV, type Day, type DayFilter } from './lib/engine';
+import { analyze, buildForecast, CsvError, daysFor, isoFor, nowMinutes, paceAdjust, parseCSV, type Day, type DayFilter } from './lib/engine';
 import { backend } from './lib/backend';
 import { useAccess, useClock, useDeviceState, useStoreData } from './hooks/useStore';
 import { TopBar, dayOptions, Mark, type Mode } from './components/TopBar';
@@ -56,13 +56,22 @@ function Main() {
   const f: DayFilter = filter ?? 'all';
 
   const ds = useMemo(() => daysFor(days, f), [days, f]);
-  const an = useMemo(() => analyze(forecastFrom(ds, settings), settings, { overrides: overridesFor(overrides, f) }), [ds, settings, overrides, f]);
+  const fc = useMemo(() => buildForecast(days, f, settings), [days, f, settings]);
+  const baseAn = useMemo(() => analyze(fc.rows, settings, { overrides: overridesFor(overrides, f) }), [fc, settings, overrides, f]);
   const canSave = !isSample || backend.mode === 'local';
   const cfg = useMemo(() => ({ overrides, canSave }), [overrides, canSave]);
 
   const liveMin = nowMinutes(clock);
-  const useLive = live && !!an && !(isSample && (liveMin < an.open || liveMin >= an.close));
+  const useLive = live && !!baseAn && !(isSample && (liveMin < baseAn.open || liveMin >= baseAn.close));
   const now = useLive ? liveMin : manual;
+
+  // live pace: sales so far today, entered on the floor; only for today's weekday, only on this device
+  const todayIso = isoFor(clock.getFullYear(), clock.getMonth() + 1, clock.getDate());
+  const [paceIn, setPaceIn] = useDeviceState<{ date: string; amount: number }>('rf.pace', { date: '', amount: 0 });
+  const paceAmount = paceIn.date === todayIso ? paceIn.amount : 0;
+  const paceOk = mode === 'floor' && paceAmount > 0 && (f === 'all' || f === clock.getDay());
+  const paced = useMemo(() => (paceOk ? paceAdjust(fc.rows, now, paceAmount) : null), [paceOk, fc, now, paceAmount]);
+  const an = useMemo(() => (paced ? analyze(paced.rows, settings, { overrides: overridesFor(overrides, f) }) : baseAn), [paced, baseAn, settings, overrides, f]);
 
   const onFiles = useCallback(async (files: File[]) => {
     setUploading(true);
@@ -106,10 +115,12 @@ function Main() {
         {!an ? (
           <div className="rounded-xl border border-red bg-red-soft px-4 py-3 font-bold">No sales for this day in your data. Pick another day above.</div>
         ) : mode === 'sched' ? (
-          <Scheduler an={an} ds={ds} days={days} filter={f} setFilter={setFilter} settings={settings} plans={plans} canSave={!isSample || backend.mode === 'local'} />
+          <Scheduler an={an} report={fc.report} ds={ds} days={days} filter={f} setFilter={setFilter} settings={settings} plans={plans} canSave={!isSample || backend.mode === 'local'} />
         ) : (
           <Floor an={an} filter={f} now={now} clock={useLive ? clock : null} live={live}
-            setLive={(v) => { if (!v) setManual(now); setLive(v); }} setManual={setManual} onTV={() => setTv(true)} />
+            setLive={(v) => { if (!v) setManual(now); setLive(v); }} setManual={setManual} onTV={() => setTv(true)}
+            pace={paced?.pace ?? null} paceAmount={paceAmount} paceAllowed={f === 'all' || f === clock.getDay()}
+            setPace={(amount) => setPaceIn({ date: todayIso, amount })} />
         )}
       </main>
       <div className="grid gap-[18px]">

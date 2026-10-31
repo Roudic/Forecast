@@ -3,21 +3,21 @@ import { backend } from '../lib/backend';
 import { overridesFor, useStoreCfg } from '../hooks/storeContext';
 import { motion } from 'framer-motion';
 import {
-  analyze, backtest, daysFor, dur, fmt, fmtShort, forecastFrom, LEVEL_LABEL, money, prettyDate, WD,
-  type Analysis, type Day, type DayFilter, type Hour, type SavedPlan, type Settings,
+  analyze, buildForecast, daysFor, dur, fmt, fmtShort, LEVEL_LABEL, money, prettyDate, WD,
+  type Analysis, type Day, type DayFilter, type ForecastReport, type Hour, type SavedPlan, type Settings,
 } from '../lib/engine';
 import { Card, ConfirmButton, CountUp, Kpi, Rise, tone, useToast } from './ui';
 import { CrewChart, Legend, SalesChart, Spark } from './Charts';
 import { ShiftBuilder } from './ShiftBuilder';
+import { AccuracyTile, ForecastReportCard } from './ForecastReport';
 
-type Props = { an: Analysis; ds: Day[]; days: Day[]; filter: DayFilter; setFilter: (f: DayFilter) => void; settings: Settings; plans: SavedPlan[]; canSave: boolean };
+type Props = { an: Analysis; report: ForecastReport; ds: Day[]; days: Day[]; filter: DayFilter; setFilter: (f: DayFilter) => void; settings: Settings; plans: SavedPlan[]; canSave: boolean };
 
-export function Scheduler({ an, ds, days, filter, setFilter, settings: s, plans, canSave }: Props) {
+export function Scheduler({ an, report, ds, days, filter, setFilter, settings: s, plans, canSave }: Props) {
   const splh = an.total / an.laborHrs, lab = (an.laborHrs * s.wage * 100) / an.total;
-  const bt = useMemo(() => backtest(days, filter, s), [days, filter, s]);
   const label = filter === 'all' ? 'All-days' : WD[filter];
   const basis = ds.length
-    ? `Built from ${ds.length} ${filter === 'all' ? 'days' : WD[filter] + (ds.length > 1 ? 's' : '')}${ds[0].dn != null ? ` (${prettyDate(ds[0].key)} – ${prettyDate(ds[ds.length - 1].key)})` : ''} · ${s.method === 'smart' ? 'smart average' : 'straight average'} · planning for a ${s.plan} day${s.adj ? ` · ${s.adj > 0 ? '+' : ''}${s.adj}% adjustment` : ''}`
+    ? `Built from ${ds.length} ${filter === 'all' ? 'days' : WD[filter] + (ds.length > 1 ? 's' : '')}${ds[0].dn != null ? ` (${prettyDate(ds[0].key)} – ${prettyDate(ds[ds.length - 1].key)})` : ''} · ${s.method === 'auto' ? 'blend of 6 forecasting methods' : s.method === 'smart' ? 'smart average' : 'straight average'} · planning for a ${s.plan} day${s.adj ? ` · ${s.adj > 0 ? '+' : ''}${s.adj}% adjustment` : ''}`
     : '';
 
   return (
@@ -29,7 +29,7 @@ export function Scheduler({ an, ds, days, filter, setFilter, settings: s, plans,
           </h2>
           <p className="mt-2 max-w-[68ch] text-muted">{basis}</p>
         </div>
-        <Accuracy bt={bt} />
+        <AccuracyTile r={report} />
       </Rise>
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,175px),1fr))] gap-3">
@@ -48,6 +48,7 @@ export function Scheduler({ an, ds, days, filter, setFilter, settings: s, plans,
 
       <PeakCards an={an} />
       <WeekStrip days={days} filter={filter} setFilter={setFilter} s={s} />
+      <ForecastReportCard r={report} />
 
       <Card title="Sales by 15 minutes" sub="Shaded band = normal range across your days. Every daypart's peak is marked." delay={4}>
         <SalesChart an={an} />
@@ -62,31 +63,6 @@ export function Scheduler({ an, ds, days, filter, setFilter, settings: s, plans,
       </Card>
 
       <HourTable an={an} filter={filter} />
-    </div>
-  );
-}
-
-function Accuracy({ bt }: { bt: ReturnType<typeof backtest> }) {
-  if (!bt)
-    return (
-      <div className="tile grid min-w-[min(100%,250px)] gap-1">
-        <span className="label">Accuracy check</span>
-        <span className="text-sm text-muted">Load 3 or more of the same weekday and the tool tests itself against the latest one.</span>
-      </div>
-    );
-  const pct = 100 - bt.dayErr * 100;
-  const one = 'key' in bt ? bt : null;
-  return (
-    <div className="tile grid min-w-[min(100%,250px)] max-w-[420px] gap-1">
-      <span className="label">{one ? `Accuracy check · ${prettyDate(one.key)}` : `Accuracy check · ${bt.multi} weekdays`}</span>
-      <span className={`font-display text-[32px] font-bold leading-none ${bt.dayErr <= 0.06 ? 'text-ok' : bt.dayErr <= 0.12 ? 'text-warn' : 'text-red-text'}`}>{pct.toFixed(0)}% on the day</span>
-      <div className="h-2 overflow-hidden rounded-full bg-panel3">
-        <motion.i className="block h-full rounded-full bg-gradient-to-r from-ok to-[#7EE0B5]" initial={{ width: 0 }} animate={{ width: `${Math.max(4, pct)}%` }} transition={{ duration: 1, delay: 0.2 }} />
-      </div>
-      <span className="text-sm text-muted">
-        {one ? `Forecast ${money(one.pred)} from earlier ${one.wd != null ? WD[one.wd] + 's' : 'days'}, actual came in at ${money(one.actual)}.` : "Each weekday's latest day, forecast from the ones before it."}{' '}
-        15-min slots ran within {(bt.slotErr * 100).toFixed(0)}%.
-      </span>
     </div>
   );
 }
@@ -140,7 +116,7 @@ function WeekStrip({ days, filter, setFilter, s }: { days: Day[]; filter: DayFil
   const { overrides } = useStoreCfg();
   const res = useMemo(() => {
     const wds = [...new Set(days.map((d) => d.wd).filter((v): v is number => v != null))].sort((a, b) => a - b);
-    return wds.map((w) => { const ds = daysFor(days, w); const an = analyze(forecastFrom(ds, s), s, { overrides: overridesFor(overrides, w) }); return an && { w, an, n: ds.length }; })
+    return wds.map((w) => { const ds = daysFor(days, w); const an = analyze(buildForecast(days, w, s).rows, s, { overrides: overridesFor(overrides, w) }); return an && { w, an, n: ds.length }; })
       .filter((x): x is { w: number; an: Analysis; n: number } => !!x);
   }, [days, s, overrides]);
   if (res.length < 2) return null;

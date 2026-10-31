@@ -82,15 +82,26 @@ Want more stores? Deploy the same repo again with a different `VITE_STORE_ID`, a
 
 ## How the forecast works
 
-| Step | What it does |
-|---|---|
-| Weekday matching | Fridays forecast from Fridays. "All days" averages everything. |
-| Smart average | For each 15-minute slot it drops that slot's best and worst day (with 4+ days), and recent weeks count more (each week back counts 85%). |
-| Busy day | Staffs to the 80th percentile instead of the average. |
-| Peaks per daypart | Breakfast (to 10:30), Lunch (to 2:00), Afternoon (to 4:30), and Dinner each get their own peak 15. The rush window is every 15 within 70% of that peak. |
-| Rush strength | Big rush = peak ≥ 1.35× the day's average, staffed at Rush SPLH. Rush = in between. Light bump = staffed at normal SPLH and doesn't block breaks. |
-| Crew | Smoothed sales per hour ÷ SPLH, split by BOH %, floored at the minimums. Leaders can hand-edit any hour. |
-| Shift Builder | Sweeps the day, adds a shift when the curve needs one, and cuts the longest-worked person once they've hit the shortest shift. It holds crew through dips shorter than 60 min and caps everyone at the longest shift. |
-| Accuracy check | Hides the latest day of each weekday, forecasts it from the earlier ones, and scores the result. |
+The default method is **Auto blend**. Six forecasting methods each make a forecast, and the app grades every one of them on your own store's days before deciding how much to trust it.
 
-All of it lives in `src/lib/engine/`. Those are pure TypeScript files with tests in `engine.test.ts`.
+| Method | What it does |
+|---|---|
+| Trimmed average | Same weekday. Drops each 15-min slot's best and worst day, and recent weeks count more. |
+| Median | Middle value per slot, so one-off spikes and dead days don't move it. |
+| Recent trend | Exponential smoothing that leans on the last week or two. |
+| Last week | What the same weekday did last week. The baseline everything has to beat. |
+| Shape × trend | Learns the curve of the day separately from the day's total, and projects the total with damped Holt trend. |
+| Store-wide trend | Projects the whole store's trend with weekday factors, then applies this weekday's curve. |
+
+How the blend is picked:
+1. **Odd days are left out.** That means partial exports (missing hours) and one-off days far from normal (robust z-score > 3.5, catering blowouts, storms). The app lists them.
+2. **Rolling-origin backtest.** For each of the last 5 days of that weekday, it hides the day, forecasts it from the days before it, and measures the error per 15 min and on the day total.
+3. **Inverse-error weights.** Methods within 25% of the best one get weight ∝ 1/error⁴. The rest get 0.
+4. **The forecast.** It's the weighted blend for the next occurrence of that weekday. The normal range comes from your actual days (20th–80th percentile). Busy-day planning uses the top of the range.
+5. **Live pace (On the Floor).** Enter sales so far today. The rest of the day is scaled by how far ahead or behind you are, and the app trusts that pace more as the day goes on (about half after 15% of the day's sales, up to 85%).
+
+On a stress test (8 weeks with growth, events and a partial export), the blend cut the day-total error from 16.7% to 11.6% and the per-15 error from 19.0% to 15.5% against the old single average. `src/lib/engine/accuracy.test.ts` re-runs this on every `npm test`.
+
+Crew = smoothed sales per hour ÷ SPLH (rush SPLH in big rushes), split by BOH %, floored at the minimums. Leaders can hand-edit any hour. Every daypart gets its own peak, and the rush window is every 15 within 70% of that peak.
+
+All of it lives in `src/lib/engine/`. These are pure TypeScript files with tests.

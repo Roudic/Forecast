@@ -23,7 +23,8 @@ A forecasting tool for Chick-fil-A Hueytown (#06123) team leaders. Leaders uploa
 ```
 src/lib/engine/     pure logic, no React; tested in engine.test.ts
   csv.ts            parse any 15-min export → Day[]
-  forecast.ts       daysFor, forecastFrom (smart avg / busy day), backtest
+  forecast.ts       daysFor, forecastFrom (single averages), buildForecast (what the app calls)
+  models.ts         6 models, outlier/partial-day detection, rolling-origin backtest, inverse-error blend, live paceAdjust
   analyze.ts        per-daypart peaks, crew per 15, breaks, hourly, dayparts
   shifts.ts         Shift Builder sweep
   floor.ts          game plan, floor state, countdown, huddle + shift text
@@ -36,7 +37,8 @@ src/components/     TopBar, Scheduler (hour table with Edit counts), ShiftBuilde
 ```
 
 ## Rules of the road
-- Keep the engine pure. UI calls `analyze(forecastFrom(daysFor(days, filter), settings), settings)`.
+- Keep the engine pure. UI calls `analyze(buildForecast(days, filter, settings).rows, settings, { overrides })`.
+- Any change to models.ts must keep `accuracy.test.ts` passing: the blend has to beat the single smart average on hidden days.
 - Settings live in Firestore at `stores/{id}/config/settings`, and hand-edited counts at `config/overrides` ({byDay: {[weekday|'all']: {[hour]: {foh, boh}}}}). All are shared by the whole store.
 - Hand edits win over the forecast in `analyze()`; rows keep `autoFoh`/`autoBoh` so the UI can show "was N".
 - Never use `alert`/`confirm`. Use `ConfirmButton` (two-tap) instead.

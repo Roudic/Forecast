@@ -81,7 +81,7 @@ export type Analysis = {
 };
 
 export type Settings = {
-  method: 'smart' | 'straight';
+  method: 'auto' | 'smart' | 'straight';
   plan: 'typical' | 'busy';
   splh: number;
   rushSplh: number;

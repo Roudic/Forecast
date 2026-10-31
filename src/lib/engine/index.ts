@@ -3,6 +3,7 @@ export * from './settings';
 export * from './format';
 export * from './csv';
 export * from './forecast';
+export * from './models';
 export * from './analyze';
 export * from './shifts';
 export * from './floor';

@@ -6,7 +6,7 @@ import { ConfirmButton, useToast } from './ui';
 type F = { k: keyof Settings; label: string; hint: string; min?: number; max?: number; step?: number; opts?: [string, string][] };
 const GROUPS: { title: string; fields: F[] }[] = [
   { title: 'Forecast', fields: [
-    { k: 'method', label: 'Averaging', hint: "Smart drops each slot's best and worst day and leans on recent weeks", opts: [['smart', 'Smart average (recommended)'], ['straight', 'Straight average']] },
+    { k: 'method', label: 'Forecast method', hint: 'Auto blends 6 methods, weighted by how accurate each was on your own days', opts: [['auto', 'Auto blend (most accurate)'], ['smart', 'Smart average only'], ['straight', 'Straight average only']] },
     { k: 'plan', label: 'Plan for', hint: 'Busy day staffs to a better-than-usual day (80th percentile)', opts: [['typical', 'Typical day'], ['busy', 'Busy day']] },
     { k: 'adj', label: 'Sales adjustment (%)', hint: '+10 for a promo day, −15 for bad weather', step: 1 },
   ] },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  analyze, backtest, daysFor, DEFAULT_SETTINGS, forecastFrom, makeSample, parseCSV, shiftsFor, buildPlan, floorState, huddleText,
+  paceAdjust, smartForecast, buildForecast, analyze, backtest, daysFor, DEFAULT_SETTINGS, forecastFrom, makeSample, parseCSV, shiftsFor, buildPlan, floorState, huddleText,
 } from './index';
 
 const S = DEFAULT_SETTINGS;
@@ -64,5 +64,33 @@ describe('hand edits', () => {
     expect(row.boh).toBe(2);
     expect(row.edited).toBe(true);
     expect(edited.hourly.find((h) => h.h === 12)!.autoFoh).toBe(base.hourly.find((h) => h.h === 12)!.foh);
+  });
+});
+
+describe('multi-model forecast', () => {
+  const days = makeSample();
+  it('grades every model and blends by accuracy', () => {
+    const { rows, report } = smartForecast(days, 5, S);
+    expect(rows.length).toBeGreaterThan(40);
+    expect(report.folds).toBeGreaterThan(0);
+    const w = report.models.reduce((a, m) => a + m.weight, 0);
+    expect(w).toBeCloseTo(1, 5);
+    expect(report.models.filter((m) => m.weight > 0).length).toBeGreaterThan(0);
+  });
+  it('falls back to the single average when asked', () => {
+    const f = buildForecast(days, 5, { ...S, method: 'smart' });
+    expect(f.report.method).toBe('smart');
+    expect(f.rows.length).toBeGreaterThan(40);
+  });
+  it('raises the rest of the day when running hot, leaves the past alone', () => {
+    const { rows } = smartForecast(days, 5, S);
+    const now = 12 * 60;
+    const expected = rows.filter((r) => r.min + 15 <= now).reduce((a, r) => a + r.sales, 0);
+    const p = paceAdjust(rows, now, expected * 1.2)!;
+    expect(p.pace.ratio).toBeCloseTo(1.2, 2);
+    expect(p.pace.applied).toBeGreaterThan(1.05);
+    expect(p.pace.applied).toBeLessThan(1.2);
+    expect(p.rows.find((r) => r.min === 600)!.sales).toBeCloseTo(rows.find((r) => r.min === 600)!.sales, 5);
+    expect(p.rows.find((r) => r.min === 780)!.sales).toBeGreaterThan(rows.find((r) => r.min === 780)!.sales);
   });
 });

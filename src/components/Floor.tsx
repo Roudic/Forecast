@@ -1,7 +1,8 @@
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   buildPlan, countdownTarget, dayLabel, dur, floorState, fmt, fmtShort, huddleText, LEVEL_LABEL, money,
-  type Analysis, type DayFilter, type FloorState,
+  type Analysis, type DayFilter, type FloorState, type Pace,
 } from '../lib/engine';
 import { Card, CountUp, useCopy } from './ui';
 import { Legend, SalesChart } from './Charts';
@@ -25,9 +26,10 @@ export const statusStyle = {
 type Props = {
   an: Analysis; filter: DayFilter; now: number; clock: Date | null; live: boolean;
   setLive: (v: boolean) => void; setManual: (m: number) => void; onTV: () => void;
+  pace: Pace | null; paceAmount: number; paceAllowed: boolean; setPace: (amount: number) => void;
 };
 
-export function Floor({ an, filter, now, clock, live, setLive, setManual, onTV }: Props) {
+export function Floor({ an, filter, now, clock, live, setLive, setManual, onTV, pace, paceAmount, paceAllowed, setPace }: Props) {
   const st = floorState(an, now);
   const t = st.target;
   const ev = buildPlan(an).filter((e) => e.t >= now - an.step);
@@ -72,6 +74,8 @@ export function Floor({ an, filter, now, clock, live, setLive, setManual, onTV }
         )}
         <DayRail an={an} now={now} />
       </motion.section>
+
+      <PaceCard pace={pace} amount={paceAmount} allowed={paceAllowed} now={now} onSet={setPace} />
 
       <Card title="Today's peaks" sub="Peak 15 for every daypart" delay={1}>
         <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,200px),1fr))] gap-3">
@@ -190,3 +194,42 @@ export function DayRail({ an, now, tall = false }: { an: Analysis; now: number; 
 }
 
 export type { FloorState };
+
+/** Leader types sales so far today; the rest of the day re-forecasts from the pace. */
+function PaceCard({ pace, amount, allowed, now, onSet }: { pace: Pace | null; amount: number; allowed: boolean; now: number; onSet: (n: number) => void }) {
+  const [val, setVal] = useState(amount ? String(Math.round(amount)) : '');
+  useEffect(() => setVal(amount ? String(Math.round(amount)) : ''), [amount]);
+  const pctOff = pace ? (pace.ratio - 1) * 100 : 0;
+  const hot = pctOff >= 3, cold = pctOff <= -3;
+  return (
+    <Card title="Live pace" sub="Punch in sales so far today and the rest of the day re-forecasts" delay={0.8}>
+      {!allowed ? (
+        <p className="text-muted">Pick today's weekday at the top to use live pace.</p>
+      ) : (
+        <form className="flex flex-wrap items-end gap-3" onSubmit={(e) => { e.preventDefault(); const n = parseFloat(val.replace(/[^0-9.]/g, '')); if (n > 0) onSet(n); }}>
+          <label className="grid gap-1 font-bold" htmlFor="pace-amount">Sales so far today
+            <span className="text-sm font-normal text-muted">From the register, through {fmt(now)}</span>
+            <span className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted">$</span>
+              <input id="pace-amount" inputMode="decimal" className="field !w-48 pl-7 text-xl" value={val} onChange={(e) => setVal(e.target.value)} placeholder="4,250" />
+            </span>
+          </label>
+          <button type="submit" className="btn btn-primary">Update forecast</button>
+          {amount > 0 && <button type="button" className="btn" onClick={() => { onSet(0); setVal(''); }}>Clear</button>}
+          {pace && (
+            <div className={`tile min-w-[min(100%,300px)] flex-1 ${hot ? '!border-ok' : cold ? '!border-warn' : ''}`}>
+              <span className={`font-display text-[28px] font-bold leading-none ${hot ? 'text-ok' : cold ? 'text-warn' : ''}`}>
+                {Math.abs(pctOff) < 3 ? 'Right on forecast' : `Running ${Math.abs(pctOff).toFixed(0)}% ${hot ? 'hot' : 'slow'}`}
+              </span>
+              <p className="mt-1 text-sm text-muted">
+                Forecast expected {money(pace.expectedSoFar)} by now, you're at {money(pace.actualSoFar)}.{' '}
+                {Math.abs(pace.applied - 1) < 0.01 ? 'No change to the rest of the day.' : `Rest of the day ${pace.applied > 1 ? 'raised' : 'lowered'} ${Math.abs((pace.applied - 1) * 100).toFixed(0)}%. Counts, peaks and the plan below are updated.`}
+                {' '}It trusts the pace more as the day goes on.
+              </p>
+            </div>
+          )}
+        </form>
+      )}
+    </Card>
+  );
+}

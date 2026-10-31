@@ -20,9 +20,9 @@ export function Card({ title, sub, children, delay = 0, className = '' }: { titl
   );
 }
 
-export function Rise({ children, delay = 0, className = '' }: { children: ReactNode; delay?: number; className?: string }) {
+export function Rise({ children, delay = 0, className = '', onClick }: { children: ReactNode; delay?: number; className?: string; onClick?: () => void }) {
   return (
-    <motion.div className={className} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: [0.2, 0.8, 0.2, 1], delay: delay * 0.07 }}>
+    <motion.div className={className} onClick={onClick} role={onClick ? 'button' : undefined} tabIndex={onClick ? 0 : undefined} onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: [0.2, 0.8, 0.2, 1], delay: delay * 0.07 }}>
       {children}
     </motion.div>
   );

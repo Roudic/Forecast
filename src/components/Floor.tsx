@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
-  buildPlan, countdownTarget, dayLabel, dur, floorState, fmt, fmtShort, huddleText, LEVEL_LABEL, money,
+  buildPlan, countdownTarget, dayLabel, dur, floorState, fmt, fmtShort, huddleText, isoOf, LEVEL_LABEL, money,
   type Analysis, type DayFilter, type FloorState, type Pace,
 } from '../lib/engine';
 import { Card, CountUp, useCopy } from './ui';
 import { Legend, SalesChart } from './Charts';
 import { PinpointPanel, ScrubHint, useScrub } from './Pinpoint';
+import { useDeviceState } from '../hooks/useStore';
 
 /** Countdown text: seconds when running on the live clock, minutes when someone picked a time. */
 export function countdown(target: number, nowMin: number, clock: Date | null) {
@@ -32,6 +33,15 @@ type Props = {
 
 export function Floor({ an, filter, now, clock, live, setLive, setManual, onTV, pace, paceAmount, paceAllowed, setPace }: Props) {
   const [pin, setPin] = useState<number | null>(null);
+  const jump = (m: number) => { setPin(m); document.getElementById('live-timeline')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+  const today = isoOf(new Date());
+  const [doneMap, setDoneMap] = useDeviceState<Record<string, string[]>>('rf.done', {});
+  const done = new Set(doneMap[today] ?? []);
+  const toggleDone = (id: string) => setDoneMap((all) => {
+    const cur = new Set(all[today] ?? []);
+    if (cur.has(id)) cur.delete(id); else cur.add(id);
+    return { [today]: [...cur] }; // only keep today
+  });
   const pinMin = pin ?? Math.max(an.open, Math.min(an.close - an.step, Math.floor(now / an.step) * an.step));
   const st = floorState(an, now);
   const t = st.target;
@@ -75,14 +85,14 @@ export function Floor({ an, filter, now, clock, live, setLive, setManual, onTV, 
             <span className="font-display text-[clamp(30px,5vw,44px)] font-bold leading-none num">{countdown(cd.t, now, clock)}</span>
           </div>
         )}
-        <DayRail an={an} now={now} pin={pinMin} onPin={setPin} />
+        <div id="live-timeline"><DayRail an={an} now={now} pin={pinMin} onPin={setPin} /></div>
         <ScrubHint text="Tap or drag the timeline to pinpoint any 15." />
-        <PinpointPanel an={an} min={pinMin} onClose={pin != null ? () => setPin(null) : undefined} closeLabel="Back to now" />
+        <PinpointPanel an={an} min={pinMin} onClose={pin != null ? () => setPin(null) : undefined} closeLabel="Back to now" editFor={filter} />
       </motion.section>
 
       <PaceCard pace={pace} amount={paceAmount} allowed={paceAllowed} now={now} onSet={setPace} />
 
-      <Card title="Today's peaks" sub="Peak 15 for every daypart" delay={1}>
+      <Card title="Today's peaks" sub="Tap one to see it on the timeline" delay={1}>
         <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,200px),1fr))] gap-3">
           {an.peaks.map((p) => p.none ? (
             <div key={p.dp} className="grid gap-1 rounded-2xl border border-line border-t-4 border-t-faint bg-panel2 px-4 py-3 opacity-70">
@@ -91,13 +101,13 @@ export function Floor({ an, filter, now, clock, live, setLive, setManual, onTV, 
               <span className="text-sm text-muted">Busiest 15. {p.why}.</span>
             </div>
           ) : (
-            <div key={p.dp} className={`grid gap-1 rounded-2xl border border-t-4 bg-panel2 px-4 py-3 transition ${p.level === 'light' ? 'border-t-warn' : 'border-t-red'} ${now >= p.end ? 'opacity-40' : ''} ${t === p ? 'border-fg' : 'border-line'}`}>
+            <button type="button" key={p.dp} onClick={() => jump(p.peakMin)} className={`grid gap-1 rounded-2xl border border-t-4 bg-panel2 px-4 py-3 text-left transition hover:border-faint ${p.level === 'light' ? 'border-t-warn' : 'border-t-red'} ${now >= p.end ? 'opacity-40' : ''} ${t === p ? 'border-fg' : 'border-line'}`}>
               <div className="flex justify-between"><h3 className="text-xl uppercase">{p.dp}</h3>
                 <span className={`text-xs font-bold uppercase ${p.level === 'light' ? 'text-warn' : 'text-red-text'}`}>{now >= p.end ? 'Done' : now >= p.start ? 'Now' : LEVEL_LABEL[p.level]}</span></div>
               <span className="font-display text-[34px] font-bold leading-none num">{fmt(p.peakMin)}</span>
               <span className="text-sm text-muted num">{fmt(p.start)} – {fmt(p.end)} · {dur(p.end - p.start)}</span>
               <span className="text-sm num">Crew <b className="text-foh">{p.peakFoh}</b> / <b className="text-red-text">{p.peakBoh}</b></span>
-            </div>
+            </button>
           ))}
         </div>
       </Card>
@@ -133,13 +143,16 @@ export function Floor({ an, filter, now, clock, live, setLive, setManual, onTV, 
       </div>
 
 
-      <Card title="Game plan" sub={`From ${fmt(now)} to close`} delay={5}>
+      <Card title="Game plan" sub={`From ${fmt(now)} to close · tap the time to see it, ✓ when it's done`} delay={5}>
         <ol className="grid gap-2.5">
           {ev.length ? ev.map((e, i) => (
-            <li key={`${e.t}-${e.k}-${i}`} className={`grid grid-cols-1 gap-1 rounded-2xl border border-l-[5px] bg-panel2 px-4 py-3 sm:grid-cols-[96px_1fr] sm:gap-3.5 ${EV[e.k]} ${e.t + an.step <= now ? 'opacity-45' : ''} ${i === nextIdx ? 'border-y-fg border-r-fg' : 'border-y-line border-r-line'}`}>
-              <span className="font-display text-[22px] font-bold num">{fmt(e.t)}</span>
-              <div>
-                <div className="text-lg font-bold">{e.w}</div>
+            <li key={`${e.t}-${e.k}-${i}`} className={`grid grid-cols-[1fr_auto] gap-1 rounded-2xl border border-l-[5px] bg-panel2 px-4 py-3 sm:grid-cols-[96px_1fr_auto] sm:gap-3.5 ${EV[e.k]} ${done.has(`${e.t}-${e.k}`) ? 'opacity-50' : e.t + an.step <= now ? 'opacity-45' : ''} ${i === nextIdx ? 'border-y-fg border-r-fg' : 'border-y-line border-r-line'}`}>
+              <button type="button" onClick={() => jump(Math.floor(e.t / an.step) * an.step)} className="w-fit text-left font-display text-[22px] font-bold underline decoration-line decoration-2 underline-offset-4 num hover:decoration-fg">{fmt(e.t)}</button>
+              <button type="button" aria-pressed={done.has(`${e.t}-${e.k}`)} aria-label={done.has(`${e.t}-${e.k}`) ? `Mark "${e.w}" not done` : `Mark "${e.w}" done`}
+                onClick={() => toggleDone(`${e.t}-${e.k}`)}
+                className={`row-span-2 grid h-12 w-12 place-items-center self-start rounded-xl border-2 text-xl font-bold transition sm:col-start-3 sm:row-start-1 ${done.has(`${e.t}-${e.k}`) ? 'border-ok bg-ok text-[#06140e]' : 'border-line text-transparent hover:border-ok hover:text-ok/50'}`}>✓</button>
+              <div className="col-span-1 sm:col-start-2 sm:row-start-1">
+                <div className={`text-lg font-bold ${done.has(`${e.t}-${e.k}`) ? 'line-through decoration-2' : ''}`}>{e.w}</div>
                 <div className="text-[15px] text-muted">{e.d}</div>
                 {e.list && <ul className="mt-1.5 list-disc pl-5 text-[15px] text-muted">{e.list.map((x) => <li key={x}>{x}</li>)}</ul>}
               </div>

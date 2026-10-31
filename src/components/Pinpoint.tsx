@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { fmt, momentAt, money, type Analysis, type MomentKind } from '../lib/engine';
+import { fmt, momentAt, money, type Analysis, type DayFilter, type MomentKind } from '../lib/engine';
+import { useHourEdit } from '../hooks/useHourEdit';
 
 const TONE: Record<MomentKind, { chip: string; label: string }> = {
   peak: { chip: 'bg-red text-white', label: 'Peak' },
@@ -35,8 +36,10 @@ export function useScrub(from: number, to: number, step: number, onPick: (min: n
 }
 
 /** Readout for one 15-minute window: what's happening, the forecast, and the crew. */
-export function PinpointPanel({ an, min, onClose, closeLabel = 'Close', compact = false }: { an: Analysis; min: number; onClose?: () => void; closeLabel?: string; compact?: boolean }) {
+export function PinpointPanel({ an, min, onClose, closeLabel = 'Close', compact = false, editFor }: { an: Analysis; min: number; onClose?: () => void; closeLabel?: string; compact?: boolean; editFor?: DayFilter }) {
   const mo = momentAt(an, min);
+  const h = Math.floor(mo.min / 60);
+  const hour = an.hourly.find((x) => x.h === h);
   const t = TONE[mo.kind];
   return (
     <AnimatePresence mode="popLayout" initial={false}>
@@ -56,6 +59,7 @@ export function PinpointPanel({ an, min, onClose, closeLabel = 'Close', compact 
           <Stat label="FOH" v={String(mo.foh)} c="text-foh" sub={mo.edited ? 'hand-edited' : 'on the clock'} />
           <Stat label="BOH" v={String(mo.boh)} c="text-red-text" sub={mo.trans != null ? `~${Math.round(mo.trans)} orders` : `${Math.round(mo.doneShare * 100)}% of day done`} />
         </div>
+        {editFor !== undefined && hour && <QuickEdit filter={editFor} h={h} foh={hour.foh} boh={hour.boh} autoFoh={hour.autoFoh} autoBoh={hour.autoBoh} />}
       </motion.div>
     </AnimatePresence>
   );
@@ -76,3 +80,26 @@ export const ScrubHint = ({ text = 'Tap or drag anywhere on the timeline to pinp
   <p className="mt-1.5 flex items-center gap-1.5 text-sm text-muted"><svg aria-hidden viewBox="0 0 16 16" className="h-4 w-4"><circle cx="8" cy="8" r="3" fill="currentColor" /><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.2" opacity=".5" /></svg>{text}</p>
 );
 
+
+/** −/+ right in the pinpoint readout. Changes the whole hour, same as the hour-by-hour table. */
+function QuickEdit({ filter, h, foh, boh, autoFoh, autoBoh }: { filter: DayFilter; h: number; foh: number; boh: number; autoFoh: number; autoBoh: number }) {
+  const { setCount, canSave } = useHourEdit(filter);
+  if (!canSave) return null;
+  const btn = 'grid h-10 w-10 place-items-center rounded-lg border border-line bg-panel3 text-lg font-bold transition hover:border-muted active:scale-95 disabled:opacity-30';
+  const side = (k: 'foh' | 'boh', v: number, auto: number) => (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={`w-10 text-xs font-bold uppercase ${k === 'foh' ? 'text-foh' : 'text-red-text'}`}>{k}</span>
+      <button type="button" className={btn} aria-label={`One less ${k.toUpperCase()} for the ${fmt(h * 60)} hour`} disabled={v <= 0} onClick={() => setCount(h, k, v - 1, auto)}>−</button>
+      <span className="w-8 text-center font-display text-2xl font-bold num">{v}</span>
+      <button type="button" className={btn} aria-label={`One more ${k.toUpperCase()} for the ${fmt(h * 60)} hour`} onClick={() => setCount(h, k, v + 1, auto)}>+</button>
+      {v !== auto && <button type="button" className="text-xs font-bold text-warn underline-offset-2 hover:underline" onClick={() => setCount(h, k, auto, auto)}>undo (was {auto})</button>}
+    </span>
+  );
+  return (
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line pt-3 sm:col-span-2">
+      <span className="text-sm text-muted">Crew for the whole {fmt(h * 60)}–{fmt(h * 60 + 60)} hour <span className="text-faint">(sized for its busiest 15)</span>:</span>
+      {side('foh', foh, autoFoh)}
+      {side('boh', boh, autoBoh)}
+    </div>
+  );
+}

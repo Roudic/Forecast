@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { addDays, analyze, buildForecast, CsvError, daysFor, isoOf, longDate, nowMinutes, paceAdjust, parseCSV, WD, weekdayOfIso, type Day, type DayFilter } from './lib/engine';
+import { addDays, analyze, applyWhatIf, buildForecast, NO_WHATIF, type WhatIf, CsvError, daysFor, isoOf, longDate, nowMinutes, paceAdjust, parseCSV, WD, weekdayOfIso, type Day, type DayFilter } from './lib/engine';
 import { backend } from './lib/backend';
 import { useAccess, useClock, useDeviceState, useStoreData } from './hooks/useStore';
 import { TopBar, Mark, type Mode } from './components/TopBar';
@@ -64,7 +64,17 @@ function Main() {
 
   const ds = useMemo(() => daysFor(days, f), [days, f]);
   const fc = useMemo(() => buildForecast(days, f, settings), [days, f, settings]);
-  const baseAn = useMemo(() => (noHistory ? null : analyze(fc.rows, settings, { overrides: overridesFor(overrides, f) })), [fc, settings, overrides, f, noHistory]);
+  // what-if (Look Ahead only), saved per date on this device
+  const [whatIfs, setWhatIfs] = useDeviceState<Record<string, WhatIf>>('rf.whatif', {});
+  const whatIf = mode === 'ahead' ? whatIfs[aheadDate] ?? NO_WHATIF : NO_WHATIF;
+  const setWhatIf = useCallback((w: WhatIf) => setWhatIfs((all) => {
+    const next = Object.fromEntries(Object.entries(all).filter(([k]) => k >= todayIso)); // drop past dates
+    if (!w.pct && !w.adds.length) delete next[aheadDate]; else next[aheadDate] = w;
+    return next;
+  }), [aheadDate, todayIso, setWhatIfs]);
+  const rows = useMemo(() => applyWhatIf(fc.rows, whatIf), [fc, whatIf]);
+  const baseTotal = useMemo(() => fc.rows.reduce((a, r) => a + r.sales, 0), [fc]);
+  const baseAn = useMemo(() => (noHistory ? null : analyze(rows, settings, { overrides: overridesFor(overrides, f) })), [rows, settings, overrides, f, noHistory]);
   const canSave = !isSample || backend.mode === 'local';
   const cfg = useMemo(() => ({ overrides, canSave }), [overrides, canSave]);
 
@@ -125,7 +135,7 @@ function Main() {
             {mode === 'live' && <button type="button" className="btn btn-primary w-fit" onClick={() => setMode('ahead')}>Look ahead to {longDate(firstOpen)}</button>}
           </div>
         ) : mode === 'ahead' ? (
-          <Scheduler an={an} report={fc.report} ds={ds} days={days} filter={f} date={aheadDate} todayIso={todayIso} setDate={setAheadPick} settings={settings} plans={plans} canSave={canSave} />
+          <Scheduler whatIf={whatIf} setWhatIf={setWhatIf} baseTotal={baseTotal} an={an} report={fc.report} ds={ds} days={days} filter={f} date={aheadDate} todayIso={todayIso} setDate={setAheadPick} settings={settings} plans={plans} canSave={canSave} />
         ) : (
           <>
           <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">

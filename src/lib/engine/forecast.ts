@@ -88,3 +88,23 @@ export function buildForecast(days: Day[], f: DayFilter, s: Settings): Forecast 
   const report = smartForecast(days, f, { ...s, method: 'auto' }).report;
   return { rows: forecastFrom(daysFor(days, f), s), report: { ...report, method: s.method } };
 }
+
+/** Per-date "what if" a leader dials in on Look Ahead: a % swing and known catering pickups. */
+export type WhatIf = { pct: number; adds: { min: number; amount: number }[] };
+export const NO_WHATIF: WhatIf = { pct: 0, adds: [] };
+
+/**
+ * Applies a what-if to a forecast. The % scales every 15. A catering order's sales are added
+ * across the 30 minutes before pickup, when the kitchen is actually building it.
+ */
+export function applyWhatIf(rows: FcRow[], w: WhatIf | null | undefined): FcRow[] {
+  if (!w || (!w.pct && !w.adds.length)) return rows;
+  const f = 1 + w.pct / 100;
+  const out = rows.map((r) => ({ ...r, sales: r.sales * f, avg: r.avg * f, low: r.low * f, high: r.high * f, trans: r.trans != null ? r.trans * f : null }));
+  for (const a of w.adds) {
+    const slots = out.filter((r) => r.min >= a.min - 30 && r.min < a.min);
+    const tgt = slots.length ? slots : out.filter((r) => r.min <= a.min).slice(-1);
+    tgt.forEach((r) => { const add = a.amount / tgt.length; r.sales += add; r.avg += add; r.high += add; r.low += add; });
+  }
+  return out;
+}

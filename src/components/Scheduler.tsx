@@ -1,20 +1,26 @@
-import { useMemo, useState } from 'react';
-import { backend } from '../lib/backend';
+import { useEffect, useMemo, useState } from 'react';
+import { useHourEdit } from '../hooks/useHourEdit';
 import { overridesFor, useStoreCfg } from '../hooks/storeContext';
 import { motion } from 'framer-motion';
 import {
   addDays, analyze, buildForecast, daysFor, dur, fmt, fmtShort, LEVEL_LABEL, longDate, money, prettyDate, relDay, WD, weekdayOfIso,
-  type Analysis, type Day, type DayFilter, type ForecastReport, type Hour, type SavedPlan, type Settings,
+  type Analysis, type Day, type DayFilter, type ForecastReport, type WhatIf, type Hour, type SavedPlan, type Settings,
 } from '../lib/engine';
-import { Card, ConfirmButton, CountUp, Kpi, Rise, tone, useToast } from './ui';
+import { Card, ConfirmButton, CountUp, Kpi, Rise, tone } from './ui';
 import { CrewChart, Legend, SalesChart, Spark } from './Charts';
 import { ShiftBuilder } from './ShiftBuilder';
 import { AccuracyTile, ForecastReportCard } from './ForecastReport';
 import { PinpointPanel } from './Pinpoint';
+import { WhatIfCard } from './WhatIf';
 
-type Props = { an: Analysis; report: ForecastReport; ds: Day[]; days: Day[]; filter: DayFilter; date: string; todayIso: string; setDate: (iso: string) => void; settings: Settings; plans: SavedPlan[]; canSave: boolean };
+type Props = { whatIf: WhatIf; setWhatIf: (w: WhatIf) => void; baseTotal: number; an: Analysis; report: ForecastReport; ds: Day[]; days: Day[]; filter: DayFilter; date: string; todayIso: string; setDate: (iso: string) => void; settings: Settings; plans: SavedPlan[]; canSave: boolean };
 
-export function Scheduler({ an, report, ds, days, filter, date, todayIso, setDate, settings: s, plans, canSave }: Props) {
+export function Scheduler({ whatIf, setWhatIf, baseTotal, an, report, ds, days, filter, date, todayIso, setDate, settings: s, plans, canSave }: Props) {
+  const top = [...an.rushes].sort((a, b) => b.peakSales - a.peakSales)[0];
+  const [pinRaw, setPinRaw] = useState<number | null>(null);
+  useEffect(() => setPinRaw(null), [date]);
+  const pin = pinRaw != null && an.L.some((r) => r.min === pinRaw) ? pinRaw : top ? top.peakMin : an.L[0].min;
+  const jump = (m: number) => { setPinRaw(m); document.getElementById('pin-chart')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); };
   const splh = an.total / an.laborHrs, lab = (an.laborHrs * s.wage * 100) / an.total;
   const basis = ds.length
     ? `Built from ${ds.length} ${filter === 'all' ? 'days' : WD[filter] + (ds.length > 1 ? 's' : '')}${ds[0].dn != null ? ` (${prettyDate(ds[0].key)} – ${prettyDate(ds[ds.length - 1].key)})` : ''} · ${s.method === 'auto' ? 'blend of 6 forecasting methods' : s.method === 'smart' ? 'smart average' : 'straight average'} · planning for a ${s.plan} day${s.adj ? ` · ${s.adj > 0 ? '+' : ''}${s.adj}% adjustment` : ''}`
@@ -47,13 +53,17 @@ export function Scheduler({ an, report, ds, days, filter, date, todayIso, setDat
         </Kpi>
       </div>
 
+      <WhatIfCard w={whatIf} setW={setWhatIf} an={an} baseTotal={baseTotal} date={date} />
       <NextDays days={days} date={date} todayIso={todayIso} setDate={setDate} s={s} />
-      <PeakCards an={an} />
+      <PeakCards an={an} onPick={jump} />
 
       <ForecastReportCard r={report} />
 
       <Card title="Sales by 15 minutes" sub="Tap or drag across the chart to pinpoint any 15. Shaded band = normal range." delay={4}>
-        <PinChart an={an} />
+        <div id="pin-chart">
+          <SalesChart an={an} pin={pin} onPin={setPinRaw} />
+          <PinpointPanel an={an} min={pin} editFor={filter} />
+        </div>
         <Legend items={[['#E51636', 'Rush window'], ['#F2AA3C', 'Light bump'], ['#76696F', 'Normal'], ['rgba(246,240,242,.07)', 'Normal range', true], ['#33260F', 'Stock-up / reset', true], ['#112B22', 'Break window', true]]} />
       </Card>
 
@@ -64,7 +74,7 @@ export function Scheduler({ an, report, ds, days, filter, date, todayIso, setDat
         <Legend items={[['#6FA9FF', 'FOH'], ['#E51636', 'BOH']]} />
       </Card>
 
-      <HourTable an={an} filter={filter} />
+      <HourTable an={an} filter={filter} onPick={jump} />
     </div>
   );
 }
@@ -76,14 +86,15 @@ function Row({ k, children }: { k: string; children: React.ReactNode }) {
   return <div className="flex justify-between gap-2 border-t border-line pt-1.5 text-[15px]"><span>{k}</span><b className="num">{children}</b></div>;
 }
 
-export function PeakCards({ an }: { an: Analysis }) {
+export function PeakCards({ an, onPick }: { an: Analysis; onPick?: (m: number) => void }) {
   return (
     <Card title="Peaks by daypart" sub="Every daypart gets its own peak, not just the biggest one of the day" delay={3}>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,230px),1fr))] gap-3">
         {an.dayparts.map((d, i) => {
           const p = d.peak;
           return (
-            <Rise key={d.name} delay={i + 2} className={`grid content-start gap-1 rounded-2xl border border-line border-t-4 bg-panel2 px-4 py-3.5 ${p && !p.none ? lvlTop[p.level] : 'border-t-faint opacity-75'}`}>
+            <Rise key={d.name} delay={i + 2} className={`grid content-start gap-1 rounded-2xl border border-line border-t-4 bg-panel2 px-4 py-3.5 ${p && !p.none ? lvlTop[p.level] : 'border-t-faint opacity-75'} ${onPick && p?.peakMin != null ? 'cursor-pointer transition hover:border-faint' : ''}`}
+              onClick={onPick && p?.peakMin != null ? () => onPick(p.peakMin as number) : undefined}>
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-[22px] font-bold uppercase tracking-[0.03em]">{d.name}</h3>
                 <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-[0.08em] ${p && !p.none ? lvlPill[p.level] : 'bg-panel3 text-muted'}`}>{p && !p.none ? LEVEL_LABEL[p.level] : 'Ramp'}</span>
@@ -168,28 +179,9 @@ function Move({ o }: { o: Hour }) {
   return o.dF || o.dB ? <>{pill(o.dF, 'FOH')}{pill(o.dB, 'BOH')}</> : <span className="text-sm text-muted">hold</span>;
 }
 
-function HourTable({ an, filter }: { an: Analysis; filter: DayFilter }) {
-  const { overrides, canSave } = useStoreCfg();
-  const toast = useToast();
+function HourTable({ an, filter, onPick }: { an: Analysis; filter: DayFilter; onPick?: (m: number) => void }) {
+  const { setCount, resetAll, canSave, editedHours } = useHourEdit(filter);
   const [editing, setEditing] = useState(false);
-  const mine = overridesFor(overrides, filter);
-  const editedHours = Object.keys(mine).length;
-  const fk = String(filter);
-
-  const setCount = (h: number, side: 'foh' | 'boh', value: number, auto: number) => {
-    const cur = { ...(mine[String(h)] ?? {}) };
-    if (value === auto) delete cur[side]; else cur[side] = Math.max(0, value);
-    const day = { ...mine };
-    if (cur.foh == null && cur.boh == null) delete day[String(h)]; else day[String(h)] = cur;
-    const next = { ...overrides, [fk]: day };
-    if (!Object.keys(day).length) delete next[fk];
-    backend.saveOverrides(next).catch((e: Error) => toast(`Couldn't save: ${e.message}`));
-  };
-  const resetAll = () => {
-    const next = { ...overrides };
-    delete next[fk];
-    backend.saveOverrides(next).then(() => toast('Back to the forecast counts')).catch((e: Error) => toast(`Couldn't save: ${e.message}`));
-  };
 
   const cell = (o: Hour, side: 'foh' | 'boh') => {
     const v = o[side], auto = side === 'foh' ? o.autoFoh : o.autoBoh, changed = v !== auto;
@@ -232,7 +224,8 @@ function HourTable({ an, filter }: { an: Analysis; filter: DayFilter }) {
           </thead>
           <tbody>
             {an.hourly.map((o) => (
-              <tr key={o.h} className={`transition-colors hover:bg-panel2 ${o.edited ? 'bg-warn-soft/40' : ''}`}>
+              <tr key={o.h} className={`transition-colors hover:bg-panel2 ${o.edited ? 'bg-warn-soft/40' : ''} ${!editing && onPick ? 'cursor-pointer' : ''}`}
+                onClick={!editing && onPick ? () => onPick(o.h * 60) : undefined}>
                 <td className="whitespace-nowrap border-b border-line px-2.5 py-2.5" style={o.rush ? { boxShadow: 'inset 4px 0 0 #E51636' } : undefined}>
                   {fmt(o.h * 60)}{o.rush && <span className="text-sm text-muted"> · rush</span>}
                 </td>
@@ -259,15 +252,3 @@ function Step({ label, onClick, disabled, children }: { label: string; onClick: 
   );
 }
 
-/** Look Ahead sales chart with pinpoint. Starts on the day's biggest peak. */
-function PinChart({ an }: { an: Analysis }) {
-  const top = [...an.rushes].sort((a, b) => b.peakSales - a.peakSales)[0];
-  const [pin, setPin] = useState<number | null>(null);
-  const min = pin != null && an.L.some((r) => r.min === pin) ? pin : top ? top.peakMin : an.L[0].min;
-  return (
-    <>
-      <SalesChart an={an} pin={min} onPin={setPin} />
-      <PinpointPanel an={an} min={min} />
-    </>
-  );
-}

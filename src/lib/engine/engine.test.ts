@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  momentAt, paceAdjust, smartForecast, buildForecast, analyze, backtest, daysFor, DEFAULT_SETTINGS, forecastFrom, makeSample, parseCSV, shiftsFor, buildPlan, floorState, huddleText,
+  applyWhatIf, momentAt, paceAdjust, smartForecast, buildForecast, analyze, backtest, daysFor, DEFAULT_SETTINGS, forecastFrom, makeSample, parseCSV, shiftsFor, buildPlan, floorState, huddleText,
 } from './index';
 
 const S = DEFAULT_SETTINGS;
@@ -108,5 +108,19 @@ describe('pinpoint', () => {
     expect(m.foh + m.boh).toBeGreaterThan(5);
     expect(m.doneShare).toBeGreaterThan(0);
     expect(m.doneShare).toBeLessThan(1);
+  });
+});
+
+describe('what-if', () => {
+  it('scales the day and puts catering in the 30 min before pickup', () => {
+    const { rows } = smartForecast(makeSample(), 5, S);
+    const tot = (r: { sales: number }[]) => r.reduce((a, x) => a + x.sales, 0);
+    const up = applyWhatIf(rows, { pct: 10, adds: [] });
+    expect(tot(up) / tot(rows)).toBeCloseTo(1.1, 5);
+    const cat = applyWhatIf(rows, { pct: 0, adds: [{ min: 690, amount: 800 }] });
+    expect(tot(cat) - tot(rows)).toBeCloseTo(800, 5);
+    expect(cat.find((r) => r.min === 660)!.sales - rows.find((r) => r.min === 660)!.sales).toBeCloseTo(400, 5);
+    expect(cat.find((r) => r.min === 690)!.sales).toBeCloseTo(rows.find((r) => r.min === 690)!.sales, 5);
+    expect(applyWhatIf(rows, { pct: 0, adds: [] })).toBe(rows);
   });
 });

@@ -33,7 +33,8 @@ src/lib/backend.ts  Firestore + demo backends, join flow
 src/lib/firebase.ts Firebase init
 src/hooks/useStore.ts  access, live data subscriptions, clock
 src/hooks/storeContext.ts  hand-edited counts shared to every screen
-src/components/     TopBar (Today · Live / Look Ahead tabs), Scheduler = Look Ahead (next 7 days, hour table with Edit counts), ShiftBuilder, Floor, KitchenTV, Panels (settings + data), JoinStore, Charts (SalesChart is scrubbable), Pinpoint (useScrub + PinpointPanel), ui
+src/hooks/useHourEdit.ts   save/undo hand edits for an hour (hour table + pinpoint quick edit)
+src/components/     TopBar (Today · Live / Look Ahead tabs), Scheduler = Look Ahead (next 7 days, hour table with Edit counts), ShiftBuilder, Floor, KitchenTV, Panels (settings + data), JoinStore, Charts (SalesChart is scrubbable), Pinpoint (useScrub + PinpointPanel + QuickEdit), WhatIf (Look Ahead % chips + catering), ui
 ```
 
 ## Rules of the road
@@ -44,6 +45,7 @@ src/components/     TopBar (Today · Live / Look Ahead tabs), Scheduler = Look A
 - Never use `alert`/`confirm`. Use `ConfirmButton` (two-tap) instead.
 - Hueytown targets: labor 19%, SPLH $70 building spot, $75 goal.
 - Two tabs on purpose so nobody mixes up days: **Today · Live** is always today (Floor, pace, Kitchen TV); **Look Ahead** is a specific future date (default = next open day), picked from the next 7 days. No weekday dropdown.
+- Everything links to the timeline: peak cards, game plan times, and hour rows set the pinpoint. Game plan check-offs and what-ifs are per device (localStorage); hand-edited counts are store-wide.
 - No station/position breakdown on purpose: leaders found it confusing. The app gives FOH/BOH counts only.
 - Run `npm test` and `npm run build` before pushing.
 

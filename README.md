@@ -2,8 +2,8 @@
 
 Hueytown #06123 forecasting tool for team leaders. Upload 15-minute sales CSVs and get:
 
-- **Scheduler**: FOH/BOH counts for every 15 minutes, a peak for every daypart, an hour-by-hour table, and a **Shift Builder** that turns the counts into real shifts you can put names on and save.
-- **On the Floor**: a live status (steady / rush coming / in the rush), a countdown, FOH/BOH counts, a game plan with stock-up, lineup lock, and reset times, plus break windows and a copyable shift huddle.
+- **Look Ahead** (the scheduler): FOH/BOH counts for every 15 minutes, a peak for every daypart, an hour-by-hour table, and a **Shift Builder** that turns the counts into real shifts you can put names on and save.
+- **Today · Live** (on the floor): a live status (steady / rush coming / in the rush), a countdown, FOH/BOH counts, a game plan with stock-up, lineup lock, and reset times, plus break windows and a copyable shift huddle.
 - **Kitchen TV**: a full-screen board for the kitchen TV with a big countdown that ticks every second.
 
 Every iPad and the kitchen TV share one Firebase database, so uploads, settings, and saved plans show up everywhere.

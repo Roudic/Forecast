@@ -37,3 +37,23 @@ export function nextDateFor(wd: number, from = new Date()): string {
   return isoFor(d.getFullYear(), d.getMonth() + 1, d.getDate());
 }
 export const nowMinutes = (d = new Date()) => d.getHours() * 60 + d.getMinutes();
+
+/** ISO date for a local Date. */
+export const isoOf = (d: Date) => isoFor(d.getFullYear(), d.getMonth() + 1, d.getDate());
+/** ISO date `n` days after `iso`. */
+export function addDays(iso: string, n: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const dt = new Date(y, m - 1, d + n);
+  return isoOf(dt);
+}
+/** "Saturday, Oct 31" */
+export function longDate(iso: string): string {
+  const wd = weekdayOfIso(iso);
+  return `${wd != null ? WD[wd] : ''}, ${prettyDate(iso)}`;
+}
+/** "Today", "Tomorrow", or "In 3 days" relative to `todayIso`. */
+export function relDay(iso: string, todayIso: string): string {
+  const [a, b] = [iso, todayIso].map((x) => { const [y, m, d] = x.split('-').map(Number); return Date.UTC(y, m - 1, d); });
+  const n = Math.round((a - b) / 864e5);
+  return n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : n === -1 ? 'Yesterday' : n > 1 ? `In ${n} days` : `${-n} days ago`;
+}

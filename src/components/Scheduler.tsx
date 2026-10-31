@@ -3,7 +3,7 @@ import { backend } from '../lib/backend';
 import { overridesFor, useStoreCfg } from '../hooks/storeContext';
 import { motion } from 'framer-motion';
 import {
-  analyze, buildForecast, daysFor, dur, fmt, fmtShort, LEVEL_LABEL, money, prettyDate, WD,
+  addDays, analyze, buildForecast, daysFor, dur, fmt, fmtShort, LEVEL_LABEL, longDate, money, prettyDate, relDay, WD, weekdayOfIso,
   type Analysis, type Day, type DayFilter, type ForecastReport, type Hour, type SavedPlan, type Settings,
 } from '../lib/engine';
 import { Card, ConfirmButton, CountUp, Kpi, Rise, tone, useToast } from './ui';
@@ -11,11 +11,10 @@ import { CrewChart, Legend, SalesChart, Spark } from './Charts';
 import { ShiftBuilder } from './ShiftBuilder';
 import { AccuracyTile, ForecastReportCard } from './ForecastReport';
 
-type Props = { an: Analysis; report: ForecastReport; ds: Day[]; days: Day[]; filter: DayFilter; setFilter: (f: DayFilter) => void; settings: Settings; plans: SavedPlan[]; canSave: boolean };
+type Props = { an: Analysis; report: ForecastReport; ds: Day[]; days: Day[]; filter: DayFilter; date: string; todayIso: string; setDate: (iso: string) => void; settings: Settings; plans: SavedPlan[]; canSave: boolean };
 
-export function Scheduler({ an, report, ds, days, filter, setFilter, settings: s, plans, canSave }: Props) {
+export function Scheduler({ an, report, ds, days, filter, date, todayIso, setDate, settings: s, plans, canSave }: Props) {
   const splh = an.total / an.laborHrs, lab = (an.laborHrs * s.wage * 100) / an.total;
-  const label = filter === 'all' ? 'All-days' : WD[filter];
   const basis = ds.length
     ? `Built from ${ds.length} ${filter === 'all' ? 'days' : WD[filter] + (ds.length > 1 ? 's' : '')}${ds[0].dn != null ? ` (${prettyDate(ds[0].key)} – ${prettyDate(ds[ds.length - 1].key)})` : ''} · ${s.method === 'auto' ? 'blend of 6 forecasting methods' : s.method === 'smart' ? 'smart average' : 'straight average'} · planning for a ${s.plan} day${s.adj ? ` · ${s.adj > 0 ? '+' : ''}${s.adj}% adjustment` : ''}`
     : '';
@@ -24,8 +23,9 @@ export function Scheduler({ an, report, ds, days, filter, setFilter, settings: s
     <div className="grid gap-[18px]">
       <Rise className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3.5">
         <div className="min-w-0">
+          <span className="label !text-sm">Look ahead · forecast for</span>
           <h2 className="font-display text-[clamp(38px,6vw,60px)] font-extrabold uppercase leading-[.95]">
-            <span className="text-red">{label}</span> forecast
+            <span className="text-red">{relDay(date, todayIso)}</span> · {longDate(date)}
           </h2>
           <p className="mt-2 max-w-[68ch] text-muted">{basis}</p>
         </div>
@@ -46,8 +46,9 @@ export function Scheduler({ an, report, ds, days, filter, setFilter, settings: s
         </Kpi>
       </div>
 
+      <NextDays days={days} date={date} todayIso={todayIso} setDate={setDate} s={s} />
       <PeakCards an={an} />
-      <WeekStrip days={days} filter={filter} setFilter={setFilter} s={s} />
+
       <ForecastReportCard r={report} />
 
       <Card title="Sales by 15 minutes" sub="Shaded band = normal range across your days. Every daypart's peak is marked." delay={4}>
@@ -55,7 +56,7 @@ export function Scheduler({ an, report, ds, days, filter, setFilter, settings: s
         <Legend items={[['#E51636', 'Rush window'], ['#F2AA3C', 'Light bump'], ['#76696F', 'Normal'], ['rgba(246,240,242,.07)', 'Normal range', true], ['#33260F', 'Stock-up / reset', true], ['#112B22', 'Break window', true]]} />
       </Card>
 
-      <ShiftBuilder an={an} s={s} filter={filter} plans={plans} canSave={canSave} />
+      <ShiftBuilder an={an} s={s} date={date} plans={plans} canSave={canSave} />
 
       <Card title="Crew needed" sub="Headcount on the clock for each 15 minutes" delay={5}>
         <CrewChart an={an} />
@@ -112,33 +113,47 @@ export function PeakCards({ an }: { an: Analysis }) {
   );
 }
 
-function WeekStrip({ days, filter, setFilter, s }: { days: Day[]; filter: DayFilter; setFilter: (f: DayFilter) => void; s: Settings }) {
+/** The next 7 days as tappable dates. Days with no history (closed Sundays) show as closed. */
+function NextDays({ days, date, todayIso, setDate, s }: { days: Day[]; date: string; todayIso: string; setDate: (iso: string) => void; s: Settings }) {
   const { overrides } = useStoreCfg();
   const res = useMemo(() => {
-    const wds = [...new Set(days.map((d) => d.wd).filter((v): v is number => v != null))].sort((a, b) => a - b);
-    return wds.map((w) => { const ds = daysFor(days, w); const an = analyze(buildForecast(days, w, s).rows, s, { overrides: overridesFor(overrides, w) }); return an && { w, an, n: ds.length }; })
-      .filter((x): x is { w: number; an: Analysis; n: number } => !!x);
-  }, [days, s, overrides]);
-  if (res.length < 2) return null;
-  const mx = Math.max(...res.map((r) => Math.max(...r.an.L.map((x) => x.sales))));
+    const cache = new Map<number, { an: Analysis; n: number } | null>();
+    return Array.from({ length: 7 }, (_, i) => addDays(todayIso, i + 1)).map((iso) => {
+      const w = weekdayOfIso(iso)!;
+      if (!cache.has(w)) {
+        const n = daysFor(days, w).length;
+        cache.set(w, n ? (() => { const an = analyze(buildForecast(days, w, s).rows, s, { overrides: overridesFor(overrides, w) }); return an && { an, n }; })() : null);
+      }
+      return { iso, w, r: cache.get(w) ?? null };
+    });
+  }, [days, s, overrides, todayIso]);
+  const mx = Math.max(1, ...res.filter((x) => x.r).map((x) => Math.max(...x.r!.an.L.map((y) => y.sales))));
   return (
-    <Card title="Your week" sub="Tap a day to plan it. Every day in your data feeds its weekday." delay={3.5}>
+    <Card title="Next 7 days" sub="Tap a day to see its forecast and build its shifts" delay={3.2}>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,150px),1fr))] gap-2.5">
-        {res.map(({ w, an, n }) => {
-          const on = filter === w;
+        {res.map(({ iso, w, r }) => {
+          const on = iso === date;
+          if (!r) return (
+            <div key={iso} className="grid content-start gap-1 rounded-2xl border border-dashed border-line p-3 opacity-60">
+              <span className="font-display text-xl font-bold uppercase tracking-[0.04em]">{WD[w].slice(0, 3)} <span className="font-body text-sm font-normal normal-case tracking-normal text-muted">{prettyDate(iso)}</span></span>
+              <span className="text-sm text-muted">{w === 0 ? 'Closed Sunday' : `No ${WD[w]}s in your data yet`}</span>
+            </div>
+          );
+          const { an, n } = r;
           return (
-            <motion.button key={w} type="button" whileHover={{ y: -2 }} onClick={() => { setFilter(w); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+            <motion.button key={iso} type="button" whileHover={{ y: -2 }} onClick={() => { setDate(iso); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
               aria-current={on} className={`grid gap-1 rounded-2xl border p-3 text-left transition-colors ${on ? 'border-red bg-gradient-to-b from-red-soft to-panel2 shadow-[0_6px_18px_rgba(229,22,54,.18)]' : 'border-line bg-panel2 hover:border-faint'}`}>
-              <span className="flex justify-between font-display text-xl font-bold uppercase tracking-[0.04em]">{WD[w].slice(0, 3)}<span className="font-body text-xs font-normal normal-case tracking-normal text-muted">{n} day{n > 1 ? 's' : ''}</span></span>
+              <span className="text-xs font-bold uppercase tracking-[0.08em] text-muted">{relDay(iso, todayIso)}</span>
+              <span className="flex items-baseline justify-between gap-1 font-display text-xl font-bold uppercase tracking-[0.04em]">{WD[w].slice(0, 3)} <span className="font-body text-sm font-normal normal-case tracking-normal text-muted">{prettyDate(iso)}</span></span>
               <span className="font-display text-[28px] font-bold leading-none num">{money(an.total)}</span>
               <span className="text-[13px] text-muted num"><span className="text-foh">{an.peakFoh}</span> FOH · <span className="text-red-text">{an.peakBoh}</span> BOH peak</span>
               <Spark an={an} max={mx} />
-              <span className="text-[13px] text-muted num">{an.laborHrs.toFixed(0)} labor hrs · ${Math.round(an.total / an.laborHrs)} SPLH</span>
               <span className="flex flex-wrap gap-1">
                 {an.rushes.map((p) => (
                   <span key={p.dp} className={`rounded-md px-1.5 py-0.5 text-[11px] font-bold num ${p.level === 'light' ? 'bg-warn-soft text-warn' : 'bg-red-soft text-red-text'}`}>{p.dp[0]} {fmtShort(p.peakMin)}</span>
                 ))}
               </span>
+              <span className="text-[11px] text-faint">from {n} {WD[w]}{n > 1 ? 's' : ''}</span>
             </motion.button>
           );
         })}

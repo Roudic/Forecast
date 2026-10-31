@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { analyze, buildForecast, CsvError, daysFor, isoFor, nowMinutes, paceAdjust, parseCSV, type Day, type DayFilter } from './lib/engine';
+import { useCallback, useMemo, useState } from 'react';
+import { addDays, analyze, buildForecast, CsvError, daysFor, isoOf, longDate, nowMinutes, paceAdjust, parseCSV, WD, weekdayOfIso, type Day, type DayFilter } from './lib/engine';
 import { backend } from './lib/backend';
 import { useAccess, useClock, useDeviceState, useStoreData } from './hooks/useStore';
-import { TopBar, dayOptions, Mark, type Mode } from './components/TopBar';
+import { TopBar, Mark, type Mode } from './components/TopBar';
 import { Scheduler } from './components/Scheduler';
 import { Floor } from './components/Floor';
 import { KitchenTV } from './components/KitchenTV';
@@ -37,27 +37,34 @@ function Splash({ text, error }: { text: string; error?: boolean }) {
 function Main() {
   const toast = useToast();
   const { loading, days, realDays, isSample, settings, plans, error, overrides } = useStoreData(true);
-  const [mode, setMode] = useDeviceState<Mode>('rf.mode', 'sched');
-  const [filter, setFilter] = useState<DayFilter | null>(null);
+  const [mode, setMode] = useDeviceState<Mode>('rf.tab', 'live');
   const [live, setLive] = useState(true);
   const [manual, setManual] = useState(10 * 60 + 35);
   const [tv, setTv] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [errs, setErrs] = useState<string[]>([]);
-  const clock = useClock(mode === 'floor');
+  const clock = useClock(mode === 'live');
+  const todayIso = isoOf(clock);
 
-  const options = useMemo(() => dayOptions(days), [days]);
-  // default to today's weekday when the data has it
-  useEffect(() => {
-    if (filter !== null && options.some((o) => o.v === filter)) return;
-    const today = new Date().getDay();
-    setFilter(options.some((o) => o.v === today) ? today : options[0].v);
-  }, [options, filter]);
-  const f: DayFilter = filter ?? 'all';
+  // which weekdays the data actually has (closed Sundays won't)
+  const haveWd = useMemo(() => new Set(days.map((d) => d.wd).filter((w): w is number => w != null)), [days]);
+  // Look Ahead date: defaults to the next open day after today
+  const [aheadPick, setAheadPick] = useState<string | null>(null);
+  const firstOpen = useMemo(() => {
+    for (let i = 1; i <= 7; i++) { const iso = addDays(todayIso, i); if (haveWd.has(weekdayOfIso(iso)!)) return iso; }
+    return addDays(todayIso, 1);
+  }, [todayIso, haveWd]);
+  const aheadDate = aheadPick && aheadPick > todayIso ? aheadPick : firstOpen;
+
+  // Live always means today. Look Ahead means the picked date. Both forecast from that date's weekday.
+  const targetIso = mode === 'live' ? todayIso : aheadDate;
+  const targetWd = weekdayOfIso(targetIso)!;
+  const noHistory = haveWd.size > 0 && !haveWd.has(targetWd);
+  const f: DayFilter = haveWd.size === 0 ? 'all' : targetWd;
 
   const ds = useMemo(() => daysFor(days, f), [days, f]);
   const fc = useMemo(() => buildForecast(days, f, settings), [days, f, settings]);
-  const baseAn = useMemo(() => analyze(fc.rows, settings, { overrides: overridesFor(overrides, f) }), [fc, settings, overrides, f]);
+  const baseAn = useMemo(() => (noHistory ? null : analyze(fc.rows, settings, { overrides: overridesFor(overrides, f) })), [fc, settings, overrides, f, noHistory]);
   const canSave = !isSample || backend.mode === 'local';
   const cfg = useMemo(() => ({ overrides, canSave }), [overrides, canSave]);
 
@@ -65,11 +72,10 @@ function Main() {
   const useLive = live && !!baseAn && !(isSample && (liveMin < baseAn.open || liveMin >= baseAn.close));
   const now = useLive ? liveMin : manual;
 
-  // live pace: sales so far today, entered on the floor; only for today's weekday, only on this device
-  const todayIso = isoFor(clock.getFullYear(), clock.getMonth() + 1, clock.getDate());
+  // live pace: sales so far today, entered on the Live tab, only on this device
   const [paceIn, setPaceIn] = useDeviceState<{ date: string; amount: number }>('rf.pace', { date: '', amount: 0 });
   const paceAmount = paceIn.date === todayIso ? paceIn.amount : 0;
-  const paceOk = mode === 'floor' && paceAmount > 0 && (f === 'all' || f === clock.getDay());
+  const paceOk = mode === 'live' && paceAmount > 0 && !noHistory;
   const paced = useMemo(() => (paceOk ? paceAdjust(fc.rows, now, paceAmount) : null), [paceOk, fc, now, paceAmount]);
   const an = useMemo(() => (paced ? analyze(paced.rows, settings, { overrides: overridesFor(overrides, f) }) : baseAn), [paced, baseAn, settings, overrides, f]);
 
@@ -87,7 +93,6 @@ function Main() {
         await backend.saveDays(parsed);
         const keys = new Set([...realDays.map((d) => d.key), ...parsed.map((d) => d.key)]);
         toast(`Added ${parsed.length} day${parsed.length > 1 ? 's' : ''} · ${keys.size} saved`);
-        setFilter(null);
       } catch (e) { setErrs((x) => [...x, `Couldn't save to the database: ${(e as Error).message}`]); }
     }
     setUploading(false);
@@ -97,13 +102,13 @@ function Main() {
 
   if (loading) return <Splash text="Loading sales data…" />;
 
-  if (tv && mode === 'floor' && an)
+  if (tv && mode === 'live' && an)
     return <StoreCtx.Provider value={cfg}><KitchenTV an={an} filter={f} now={now} clock={useLive ? clock : null} onExit={exitTV} /></StoreCtx.Provider>;
 
   return (
     <StoreCtx.Provider value={cfg}>
     <div className="mx-auto max-w-[1200px] px-4 pb-14">
-      <TopBar mode={mode} setMode={setMode} filter={f} setFilter={setFilter} options={options} isSample={isSample}
+      <TopBar mode={mode} setMode={(m) => { setMode(m); window.scrollTo({ top: 0 }); }} isSample={isSample}
         dayCount={realDays.length} onFiles={onFiles} uploading={uploading} />
       {(errs.length > 0 || error) && (
         <div className="mt-3.5 grid gap-2">
@@ -113,14 +118,26 @@ function Main() {
       )}
       <main className="py-[22px]">
         {!an ? (
-          <div className="rounded-xl border border-red bg-red-soft px-4 py-3 font-bold">No sales for this day in your data. Pick another day above.</div>
-        ) : mode === 'sched' ? (
-          <Scheduler an={an} report={fc.report} ds={ds} days={days} filter={f} setFilter={setFilter} settings={settings} plans={plans} canSave={!isSample || backend.mode === 'local'} />
+          <div className="card grid gap-3">
+            <span className="label">{mode === 'live' ? 'Today · Live' : 'Look Ahead'} · {longDate(targetIso)}</span>
+            <h2 className="font-display text-4xl font-extrabold uppercase">{targetWd === 0 ? 'Closed Sunday' : `No ${WD[targetWd]}s in your data yet`}</h2>
+            <p className="text-muted">{targetWd === 0 ? 'Enjoy the day off.' : `Upload a few ${WD[targetWd]} 15-minute exports and this day gets a forecast.`}</p>
+            {mode === 'live' && <button type="button" className="btn btn-primary w-fit" onClick={() => setMode('ahead')}>Look ahead to {longDate(firstOpen)}</button>}
+          </div>
+        ) : mode === 'ahead' ? (
+          <Scheduler an={an} report={fc.report} ds={ds} days={days} filter={f} date={aheadDate} todayIso={todayIso} setDate={setAheadPick} settings={settings} plans={plans} canSave={canSave} />
         ) : (
+          <>
+          <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span className="inline-flex items-center gap-2 rounded-full bg-ok-soft px-3 py-1 text-sm font-bold uppercase tracking-[0.08em] text-ok"><span className="h-2 w-2 animate-pulse rounded-full bg-ok" />Live</span>
+            <h2 className="font-display text-[clamp(30px,5vw,44px)] font-extrabold uppercase leading-none">Today · {longDate(todayIso)}</h2>
+            <button type="button" className="ml-auto text-sm font-bold text-muted underline-offset-4 hover:underline" onClick={() => setMode('ahead')}>Need tomorrow? Look Ahead →</button>
+          </div>
           <Floor an={an} filter={f} now={now} clock={useLive ? clock : null} live={live}
             setLive={(v) => { if (!v) setManual(now); setLive(v); }} setManual={setManual} onTV={() => setTv(true)}
-            pace={paced?.pace ?? null} paceAmount={paceAmount} paceAllowed={f === 'all' || f === clock.getDay()}
+            pace={paced?.pace ?? null} paceAmount={paceAmount} paceAllowed
             setPace={(amount) => setPaceIn({ date: todayIso, amount })} />
+          </>
         )}
       </main>
       <div className="grid gap-[18px]">

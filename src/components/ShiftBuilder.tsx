@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
-  fmt, fmtShort, money, nextDateFor, prettyDate, shiftsFor, shiftSummary, shiftText, WD, weekdayOfIso,
-  type Analysis, type DayFilter, type SavedPlan, type SavedShift, type Settings, type Shift,
+  fmt, fmtShort, longDate, money, prettyDate, shiftsFor, shiftSummary, shiftText, WD, weekdayOfIso,
+  type Analysis, type SavedPlan, type SavedShift, type Settings, type Shift,
 } from '../lib/engine';
 import { backend } from '../lib/backend';
 import { Card, ConfirmButton, tone, useCopy, useToast } from './ui';
@@ -12,18 +12,17 @@ const TAG = {
   Mid: 'bg-panel3 text-muted', Dinner: 'bg-warn-soft text-warn', Close: 'bg-ok-soft text-ok',
 } as Record<string, string>;
 
-const isoToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
-export function ShiftBuilder({ an, s, filter, plans, canSave }: { an: Analysis; s: Settings; filter: DayFilter; plans: SavedPlan[]; canSave: boolean }) {
+export function ShiftBuilder({ an, s, date, plans, canSave }: { an: Analysis; s: Settings; date: string; plans: SavedPlan[]; canSave: boolean }) {
   const toast = useToast();
   const { copy, box } = useCopy();
   const built = useMemo<Shift[]>(() => [...shiftsFor(an, 'foh', s), ...shiftsFor(an, 'boh', s)], [an, s]);
-  const [planDate, setPlanDate] = useState(() => (filter === 'all' ? isoToday() : nextDateFor(filter)));
+  const [planDate, setPlanDate] = useState(date);
   const [loaded, setLoaded] = useState<SavedPlan | null>(null);
   const [names, setNames] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { setPlanDate(filter === 'all' ? isoToday() : nextDateFor(filter)); setLoaded(null); setNames({}); }, [filter]);
+  useEffect(() => { setPlanDate(date); setLoaded(null); setNames({}); }, [date]);
 
   const shifts: (Shift & { who?: string })[] = loaded ? loaded.shifts : built;
   const keyOf = (sh: Shift, i: number) => `${sh.side}-${i}`;
@@ -89,10 +88,10 @@ export function ShiftBuilder({ an, s, filter, plans, canSave }: { an: Analysis; 
     <div id="shift-builder">
       <Card title="Shift builder" sub={`The crew curve turned into real shifts. ${s.minShift}–${s.maxShift} hr shifts, openers in ${s.preOpen} min early, closers stay ${s.postClose} min.`} delay={5.5}>
         <div className="mb-4 flex flex-wrap items-end gap-3">
-          <label className="grid gap-1">
+          <div className="grid gap-0.5">
             <span className="label">Plan for</span>
-            <input type="date" id="plan-date" value={planDate} onChange={(e) => { setPlanDate(e.target.value); setLoaded(null); }} className="field !w-auto" />
-          </label>
+            <span className="font-display text-2xl font-bold uppercase">{longDate(planDate)}</span>
+          </div>
           {loaded
             ? <span className="rounded-full bg-ok-soft px-3 py-1.5 text-sm font-bold text-ok">Editing saved plan · {loaded.name}</span>
             : forThisDate && <button type="button" className="btn btn-sm" onClick={() => open(forThisDate)}>Open the saved plan for {prettyDate(planDate)}</button>}
